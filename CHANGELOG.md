@@ -7,7 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **BREAKING: `ApprovalBroker::check()` returns `?Approval` instead of `CheckResult`** — the consumed approval is now returned so the audit row for the execution can link to it; the `Gtapps\LaravelAgentic\Approvals\CheckResult` enum is deleted. Callers only ever compared against `CheckResult::Granted`, so `$broker->check(...) !== null` is the direct replacement.
 - **BREAKING: HTTP surface is now opt-in** — `agentic.http.enabled` defaults to `false`. Previously the HTTP surface auto-mounted with no authentication (the `api` middleware group does not authenticate), making any action without an `authorize()` method anonymously reachable. Set `agentic.http.enabled => true` and add your auth middleware (e.g. `auth:sanctum`) to restore it.
+
+### Fixed
+
+- **audit rows now link to the approval that authorized them** — a successful run behind an approval recorded `approval_id = null`; only the knock row carried the id. The audit trail now answers "who approved this" for the execution itself, as the README promises.
 
 ### Added
 

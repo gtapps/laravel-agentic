@@ -56,10 +56,9 @@ class ApprovalBroker
             return null;
         }
 
-        $approval->status = 'consumed';
-        $approval->consumed_at = $consumedAt;
-
-        return $approval;
+        return $approval
+            ->forceFill(['status' => 'consumed', 'consumed_at' => $consumedAt])
+            ->syncOriginal();
     }
 
     /**
