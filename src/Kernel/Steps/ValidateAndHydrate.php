@@ -18,6 +18,10 @@ class ValidateAndHydrate
             return;
         }
 
-        $call->input = $this->compiler->hydrate($call->definition->inputClass, $call->rawArgs);
+        $call->input = $this->compiler->hydrate(
+            $call->definition->inputClass,
+            $call->rawArgs,
+            $call->definition->inputSchema,
+        );
     }
 }

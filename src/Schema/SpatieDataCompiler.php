@@ -3,6 +3,7 @@
 namespace Gtapps\LaravelAgentic\Schema;
 
 use BackedEnum;
+use Illuminate\Support\Facades\Validator;
 use ReflectionClass;
 use ReflectionEnum;
 use ReflectionNamedType;
@@ -20,6 +21,16 @@ use Spatie\LaravelData\Data;
  */
 class SpatieDataCompiler implements SchemaCompiler
 {
+    /**
+     * Laravel rule per JSON Schema scalar type, for array elements.
+     */
+    protected const ITEM_RULES = [
+        'integer' => 'integer',
+        'number' => 'numeric',
+        'string' => 'string',
+        'boolean' => 'boolean',
+    ];
+
     /** @var array<class-string, true> guards against infinite recursion on cyclic Data references */
     protected array $compiling = [];
 
@@ -31,9 +42,115 @@ class SpatieDataCompiler implements SchemaCompiler
             + $this->compileObject($dtoClass);
     }
 
-    public function hydrate(string $dtoClass, array $args): object
+    public function hydrate(string $dtoClass, array $args, array $schema = []): object
     {
+        $itemTypes = $this->scalarArrayItemTypes($schema);
+
+        if ($itemTypes !== []) {
+            $args = $this->castScalarArrayItems($args, $itemTypes);
+
+            Validator::make($args, array_map(
+                fn (string $type) => self::ITEM_RULES[$type],
+                $itemTypes
+            ))->validate();
+        }
+
         return $dtoClass::validateAndCreate($args);
+    }
+
+    /**
+     * Compiled schema → dot path (`ids.*`) → JSON Schema scalar type, for every
+     * scalar array in the tree. spatie infers only a bare `array` rule for a
+     * plain array property, so without this the compiled `items` would be
+     * advertised to models and never enforced. Object items are skipped —
+     * #[DataCollectionOf] collections already get per-element rules from spatie.
+     *
+     * @return array<string, string>
+     */
+    protected function scalarArrayItemTypes(array $schema, string $prefix = ''): array
+    {
+        $types = [];
+
+        foreach ($schema['properties'] ?? [] as $name => $property) {
+            $path = $prefix.$name;
+            $propertyTypes = (array) ($property['type'] ?? []);
+
+            if (in_array('object', $propertyTypes, true)) {
+                $types += $this->scalarArrayItemTypes($property, $path.'.');
+
+                continue;
+            }
+
+            if (! in_array('array', $propertyTypes, true) || ! isset($property['items'])) {
+                continue;
+            }
+
+            $itemType = ((array) ($property['items']['type'] ?? []))[0] ?? null;
+
+            if ($itemType === 'object') {
+                $types += $this->scalarArrayItemTypes($property['items'], $path.'.*.');
+            } elseif (isset(self::ITEM_RULES[$itemType])) {
+                $types[$path.'.*'] = $itemType;
+            }
+        }
+
+        return $types;
+    }
+
+    /**
+     * Transports differ in fidelity — a CLI argument or an HTTP query string
+     * delivers every element as a string — so `["1","2"]` must still reach an
+     * int[] handler as ints. Only lossless coercions are applied; anything else
+     * passes through untouched for the validator to reject.
+     *
+     * @param  array<string, string>  $itemTypes
+     */
+    protected function castScalarArrayItems(array $args, array $itemTypes): array
+    {
+        foreach ($itemTypes as $path => $type) {
+            $args = $this->castAtPath($args, explode('.', $path), $type);
+        }
+
+        return $args;
+    }
+
+    protected function castAtPath(array $target, array $segments, string $type): array
+    {
+        $segment = array_shift($segments);
+
+        if ($segment === '*') {
+            foreach ($target as $key => $value) {
+                if ($segments === []) {
+                    $target[$key] = $this->castScalar($value, $type);
+                } elseif (is_array($value)) {
+                    $target[$key] = $this->castAtPath($value, $segments, $type);
+                }
+            }
+
+            return $target;
+        }
+
+        // A missing key, or one holding the wrong shape entirely, is left for
+        // spatie's own `array` rule to report.
+        if (is_array($target[$segment] ?? null)) {
+            $target[$segment] = $this->castAtPath($target[$segment], $segments, $type);
+        }
+
+        return $target;
+    }
+
+    protected function castScalar(mixed $value, string $type): mixed
+    {
+        if (! is_scalar($value)) {
+            return $value;
+        }
+
+        return match ($type) {
+            'integer' => is_numeric($value) && (int) $value == $value ? (int) $value : $value,
+            'number' => is_numeric($value) ? (float) $value : $value,
+            'boolean' => filter_var($value, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? $value,
+            default => $value,
+        };
     }
 
     protected function compileObject(string $dtoClass): array
@@ -154,7 +271,7 @@ class SpatieDataCompiler implements SchemaCompiler
             ];
         }
 
-        $items = $this->scalarItemsFromDocblock($dtoClass, $property);
+        $items = $this->scalarItemsFromDocblock($property);
 
         if ($items !== null) {
             return ['type' => 'array', 'items' => $items];
@@ -162,28 +279,44 @@ class SpatieDataCompiler implements SchemaCompiler
 
         throw UnsupportedSchemaType::forProperty(
             $dtoClass, $property->getName(),
-            'array property requires #[DataCollectionOf] (object items) or a @var T[] docblock '
-            .'with T = int|string|float|bool in v1'
+            'array property requires #[DataCollectionOf] (object items) or a @var T[] / list<T> / '
+            .'array<T> / array<K, T> docblock with T = int|string|float|bool in v1'
         );
     }
 
     /**
-     * Scalar array element type inferred from a `@var T[]` docblock, since
+     * Scalar array element type inferred from the property docblock, since
      * #[DataCollectionOf] only supports Data-object items. Limited to builtin
      * scalars in v1 — a class-typed T (e.g. a backed enum) would need resolving
      * a possibly-short name against the file's use-statements, which formatters
      * like Pint's fully_qualified_strict_types rule can rewrite unpredictably;
      * out of scope until that's resolved properly.
      */
-    protected function scalarItemsFromDocblock(string $dtoClass, ReflectionProperty $property): ?array
+    protected function scalarItemsFromDocblock(ReflectionProperty $property): ?array
     {
         $doc = $property->getDocComment();
 
-        if ($doc === false || ! preg_match('/@var\s+(int|string|float|bool)\[\]/', $doc, $matches)) {
+        if ($doc === false) {
             return null;
         }
 
-        return $this->scalarTypeSchema($matches[1]);
+        $scalar = 'int|string|float|bool';
+
+        // `T[]`; the trailing lookahead rejects nested `T[][]`, which would
+        // otherwise match its prefix and compile to a flat array of scalars.
+        if (preg_match('/@var\s+('.$scalar.')\[\](?!\[)/', $doc, $matches)) {
+            return $this->scalarTypeSchema($matches[1]);
+        }
+
+        // `list<T>` / `array<T>` / `array<int, T>` — the generic style this repo
+        // uses itself. A non-scalar T falls through to the unsupported error, as
+        // does a non-int key: `array<string, T>` is a JSON *object*, not an
+        // array, so compiling it to `type: array` would advertise the wrong shape.
+        if (preg_match('/@var\s+(?:list|array)<\s*(?:int\s*,\s*)?('.$scalar.')\s*>/', $doc, $matches)) {
+            return $this->scalarTypeSchema($matches[1]);
+        }
+
+        return null;
     }
 
     /**
@@ -230,17 +363,22 @@ class SpatieDataCompiler implements SchemaCompiler
 
     /**
      * Map spatie validation attributes to JSON Schema constraints, sized by base type
-     * (Laravel min/max mean length for strings, magnitude for numbers).
+     * (Laravel min/max mean length for strings, item count for arrays, magnitude
+     * for numbers).
      */
     protected function applyConstraints(array $schema, ReflectionProperty $property, ReflectionNamedType $type): array
     {
-        $isString = $type->getName() === 'string';
+        $sizeKeys = match ($type->getName()) {
+            'string' => ['minLength', 'maxLength'],
+            'array' => ['minItems', 'maxItems'],
+            default => ['minimum', 'maximum'],
+        };
 
         foreach ($property->getAttributes() as $attribute) {
             $constraint = match ($attribute->getName()) {
-                Min::class => [$isString ? 'minLength' : 'minimum' => $attribute->newInstance()->parameters()[0]],
-                Max::class => [$isString ? 'maxLength' : 'maximum' => $attribute->newInstance()->parameters()[0]],
-                Between::class => $this->betweenConstraint($attribute->newInstance()->parameters(), $isString),
+                Min::class => [$sizeKeys[0] => $attribute->newInstance()->parameters()[0]],
+                Max::class => [$sizeKeys[1] => $attribute->newInstance()->parameters()[0]],
+                Between::class => $this->betweenConstraint($attribute->newInstance()->parameters(), $sizeKeys),
                 Regex::class => ['pattern' => $this->stripRegexDelimiters($attribute->newInstance()->parameters()[0])],
                 Email::class => ['format' => 'email'],
                 default => [],
@@ -252,13 +390,14 @@ class SpatieDataCompiler implements SchemaCompiler
         return $schema;
     }
 
-    protected function betweenConstraint(array $parameters, bool $isString): array
+    /**
+     * @param  array{string, string}  $sizeKeys
+     */
+    protected function betweenConstraint(array $parameters, array $sizeKeys): array
     {
         [$min, $max] = $parameters;
 
-        return $isString
-            ? ['minLength' => $min, 'maxLength' => $max]
-            : ['minimum' => $min, 'maximum' => $max];
+        return [$sizeKeys[0] => $min, $sizeKeys[1] => $max];
     }
 
     protected function stripRegexDelimiters(string $pattern): string

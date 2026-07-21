@@ -20,7 +20,7 @@ Tests run via Orchestra Testbench on any PHP ≥ 8.3 (composer floor); the suite
 is green on both 8.4 and the local default 8.5, so plain `php` works:
 
 ```bash
-php vendor/bin/pest                    # full suite (~78 tests)
+php vendor/bin/pest                    # full suite (~100 tests)
 php vendor/bin/pest tests/Kernel/RunnerTest.php   # one file
 php vendor/bin/pest --filter "knocks"  # by name substring
 vendor/bin/pint                        # format (composer format)

@@ -7,20 +7,18 @@ use Illuminate\Console\Command;
 
 class CacheCommand extends Command
 {
-    protected $signature = 'agentic:cache {--allow-empty : Cache even when no actions are found}';
+    protected $signature = 'agentic:cache';
 
     protected $description = 'Cache the compiled agentic action manifest (like route:cache)';
 
     public function handle(Registry $registry): int
     {
-        $allowEmpty = (bool) $this->option('allow-empty');
-        $count = $registry->cache($allowEmpty);
+        $count = $registry->cache();
 
-        if ($count === 0 && ! $allowEmpty) {
+        if ($count === 0) {
             $this->line('No agentic actions were found to cache. If your actions are registered at '
                 .'runtime via Agentic::register() from a service provider, that provider must be loaded '
-                .'in the console context. Fix that and re-run, or pass --allow-empty to cache an '
-                .'intentionally empty manifest.');
+                .'in the console context. Fix that and re-run.');
 
             $this->fail('agentic:cache found 0 actions — refusing to write an empty manifest.');
         }

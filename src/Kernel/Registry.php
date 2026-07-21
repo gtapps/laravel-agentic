@@ -65,15 +65,16 @@ class Registry
 
     /**
      * Cache the compiled manifest and return the number of actions written.
-     * Refuses to write an empty manifest unless $allowEmpty — an empty file
-     * would otherwise shadow every later register() call (definitions() prefers
-     * a present cache file), so returns 0 without writing in that case.
+     * Refuses to write an empty manifest — an empty file would otherwise shadow
+     * every later register() call (definitions() prefers a present cache file),
+     * so returns 0 without writing in that case. Mirrors route:cache, which
+     * likewise refuses when the application has no routes.
      */
-    public function cache(bool $allowEmpty = false): int
+    public function cache(): int
     {
         $built = $this->build();
 
-        if ($built === [] && ! $allowEmpty) {
+        if ($built === []) {
             return 0;
         }
 
