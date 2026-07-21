@@ -13,6 +13,7 @@ use Gtapps\LaravelAgentic\Kernel\Steps\NormalizeResult;
 use Gtapps\LaravelAgentic\Kernel\Steps\Resolve;
 use Gtapps\LaravelAgentic\Kernel\Steps\ValidateAndHydrate;
 use Illuminate\Contracts\Container\Container;
+use Illuminate\Support\Facades\Log;
 
 /**
  * The one chokepoint: every surface funnels into run(), and all
@@ -46,11 +47,15 @@ class Runner
                 $this->container->make($step)($call);
             }
         } catch (\Throwable $e) {
-            $this->recorder->record($call, match (true) {
-                $e instanceof ApprovalRequiredException => 'approval_required',
-                $e instanceof ActionDenied => 'denied',
-                default => 'error',
-            }, $e->getMessage());
+            try {
+                $this->recorder->record($call, match (true) {
+                    $e instanceof ApprovalRequiredException => 'approval_required',
+                    $e instanceof ActionDenied => 'denied',
+                    default => 'error',
+                }, $e->getMessage());
+            } catch (\Throwable $recorderError) {
+                Log::warning("laravel-agentic: audit recording failed: {$recorderError->getMessage()}");
+            }
 
             throw $e;
         }

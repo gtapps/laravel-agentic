@@ -2,10 +2,12 @@
 
 use Gtapps\LaravelAgentic\Approvals\ApprovalRequiredException;
 use Gtapps\LaravelAgentic\Audit\ActionLog;
+use Gtapps\LaravelAgentic\Audit\Recorder;
 use Gtapps\LaravelAgentic\Enums\Surface;
 use Gtapps\LaravelAgentic\Events\ActionExecuted;
 use Gtapps\LaravelAgentic\Exceptions\ActionDenied;
 use Gtapps\LaravelAgentic\Facades\Agentic;
+use Gtapps\LaravelAgentic\Kernel\ActionCall;
 use Gtapps\LaravelAgentic\Kernel\ContextFactory;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\AuditedReadAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\CliOnlyAction;
@@ -94,6 +96,25 @@ it('writes an error row when the handler throws', function () {
 
     expect($row->status)->toBe('error')
         ->and($row->error)->toContain('handler exploded');
+});
+
+it('preserves the original exception when error-path audit recording fails', function () {
+    app()->instance(Recorder::class, new class extends Recorder
+    {
+        public function __construct() {}
+
+        public function record(ActionCall $call, string $status, ?string $error = null): void
+        {
+            throw new RuntimeException('audit write failed');
+        }
+    });
+
+    try {
+        Agentic::run('failing', ['message' => 'boom'], auditCtx());
+        $this->fail('Expected the original RuntimeException');
+    } catch (RuntimeException $e) {
+        expect($e->getMessage())->toContain('handler exploded');
+    }
 });
 
 it('skips audit for readOnly actions and per-action opt-out', function () {
