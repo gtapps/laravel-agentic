@@ -220,7 +220,10 @@ it('redacts configured globs from the approval payload', function () {
     } catch (ApprovalRequiredException $e) {
         $approval = Approval::where('args_hash', $e->key)->firstOrFail();
 
-        expect($approval->args_redacted)->toBe([
+        // toEqual, not toBe: MySQL's native JSON type reorders object keys
+        // (by length, then bytewise) on the round-trip, so key order here is
+        // a property of the driver, not of the redactor. Match AuditTest.
+        expect($approval->args_redacted)->toEqual([
             'username' => 'dom',
             'password' => '[redacted]',
             'card' => ['holder' => 'D. Om', 'secret' => '[redacted]'],

@@ -109,7 +109,7 @@ it('runs as the explicit principal passed to Agentic::tools, not the ambient gua
     $args = ['invoiceId' => 42, 'amount' => 99.5];
     $knock = (string) $adapter->handle(new Request($args));
 
-    $this->artisan('agentic:approve', ['key' => approvalKey($knock)])->assertSuccessful();
+    $this->artisan('agentic:approve', ['id' => approvalId($knock)])->assertSuccessful();
 
     $adapter->handle(new Request($args));
 

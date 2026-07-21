@@ -84,7 +84,7 @@ jobs:
       - name: Install dependencies
         run: composer update --prefer-dist --no-interaction
 
-      - name: Run approval tests against ${{ matrix.db }}
+      - name: Run tests against ${{ matrix.db }}
         env:
           DB_CONNECTION: ${{ matrix.db }}
           DB_HOST: 127.0.0.1
@@ -92,4 +92,4 @@ jobs:
           DB_DATABASE: agentic_test
           DB_USERNAME: ${{ matrix.username }}
           DB_PASSWORD: ${{ matrix.password }}
-        run: php vendor/bin/pest tests/Approvals
+        run: composer test
