@@ -11,3 +11,4 @@ build
 /.claude/settings.local.json
 /HANDOFF.md
 /PLAN-V1.md
+/.claude/worktrees
