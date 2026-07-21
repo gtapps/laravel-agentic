@@ -97,7 +97,7 @@ Runner — no business logic:
   `exclude` (hard denylist beating everything), gating both `tools/list` and
   `tools/call`.
 - **AiTool** — `Agentic::tools()` yields `ActionToolAdapter`s for any laravel/ai agent's `tools()` iterable.
-- **Http** — auto-mounted `ActionController` (`routes/agentic.php`, toggle with `agentic.http.enabled`); POST for all, GET allowed for `readOnly`.
+- **Http** — opt-in `ActionController` (`routes/agentic.php`, `agentic.http.enabled` defaults to `false`); POST for all, GET allowed for `readOnly`.
 - **Cli** — `agentic:action` plus `agentic:list|cache|clear|approve|deny`.
 - **Jobs** — `RunAction` dispatchable.
 
@@ -117,7 +117,10 @@ event (v1 ships no HTTP grant endpoint by design).
 `readOnly` ones only when they opt in with `#[AgentAction(audit: true)]`.
 `Redactor` applies
 `agentic.redact` dot-path globs to **both** audit rows and approval payloads,
-so secrets never land in either.
+so secrets never land in either. `ActionLog` and `Approval` each resolve
+their own connection via `agentic.audit.connection` / `agentic.approvals.connection`
+(`getConnectionName()`; both default `null` = the app's default connection),
+and the migrations honor the same keys.
 
 ### Testing your own actions
 

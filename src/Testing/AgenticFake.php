@@ -7,6 +7,7 @@ use Gtapps\LaravelAgentic\Contracts\ActionContext;
 use Gtapps\LaravelAgentic\Kernel\ActionResult;
 use Gtapps\LaravelAgentic\Kernel\Registry;
 use Gtapps\LaravelAgentic\Kernel\Runner;
+use Illuminate\Contracts\Config\Repository;
 use PHPUnit\Framework\Assert;
 
 /**
@@ -27,7 +28,10 @@ class AgenticFake extends Runner
     /** @var list<string> */
     protected array $requireApproval = [];
 
-    public function __construct(protected Registry $registry) {}
+    public function __construct(
+        protected Registry $registry,
+        protected Repository $config,
+    ) {}
 
     /**
      * Configure the value the fake returns for an action.
@@ -88,16 +92,34 @@ class AgenticFake extends Runner
 
     /**
      * The fake never writes audit rows; audited-here means the action ran
-     * AND its real definition resolved to audit — non-readOnly by default,
-     * readOnly only with #[AgentAction(audit: true)].
+     * AND a real run would have written a row — the per-action policy
+     * (non-readOnly by default, readOnly only with #[AgentAction(audit: true)])
+     * AND the global agentic.audit.enabled switch, exactly as Recorder resolves it.
      */
     public function assertAudited(string $name): void
     {
         $this->assertRan($name);
 
+        Assert::assertTrue($this->resolvedAudit($name), "Action [{$name}] is not audited.");
+    }
+
+    /**
+     * Inverse of assertAudited() — pins that an action's runs get no audit
+     * row (e.g. a readOnly action that never opted in, or auditing off globally).
+     */
+    public function assertNotAudited(string $name): void
+    {
+        $this->assertRan($name);
+
+        Assert::assertFalse($this->resolvedAudit($name), "Action [{$name}] is audited.");
+    }
+
+    protected function resolvedAudit(string $name): bool
+    {
         $definition = $this->registry->find($name);
 
         Assert::assertNotNull($definition, "Action [{$name}] is not registered.");
-        Assert::assertTrue($definition->audit, "Action [{$name}] is not audited.");
+
+        return $definition->isAuditEffective($this->config);
     }
 }

@@ -13,6 +13,11 @@ class Approval extends Model
 
     protected $guarded = [];
 
+    public function getConnectionName(): ?string
+    {
+        return $this->connection ?? config('agentic.approvals.connection');
+    }
+
     protected function casts(): array
     {
         return [

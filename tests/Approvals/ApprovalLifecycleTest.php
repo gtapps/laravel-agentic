@@ -192,6 +192,14 @@ it('denies via agentic:deny and the agent knocks again on retry', function () {
         ->and(fn () => runRefund())->toThrow(ApprovalRequiredException::class);
 });
 
+it('resolves the connection from agentic.approvals.connection, defaulting to null', function () {
+    expect((new Approval)->getConnectionName())->toBeNull();
+
+    config(['agentic.approvals.connection' => 'sqlite']);
+
+    expect((new Approval)->getConnectionName())->toBe('sqlite');
+});
+
 it('redacts configured globs from the approval payload', function () {
     config(['agentic.redact' => ['password', '*.secret']]);
 

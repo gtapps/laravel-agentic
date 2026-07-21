@@ -2,8 +2,10 @@
 
 use Gtapps\LaravelAgentic\Facades\Agentic;
 use Gtapps\LaravelAgentic\Kernel\Registry;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\AuditedReadAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\BadFallbackAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\IncoherentCompactAction;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\NoAuditAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\PackagePing;
 use Gtapps\LaravelAgentic\Tests\Fixtures\ScanActions\AppPing;
 use Illuminate\Support\Facades\File;
@@ -65,6 +67,49 @@ it('lists actions with agentic:list', function () {
 
     $this->artisan('agentic:list')
         ->expectsOutputToContain('refund-invoice')
+        ->assertSuccessful();
+});
+
+it('shows the effective Audit column per action', function () {
+    config(['agentic.discovery.paths' => []]);
+    Agentic::register([AuditedReadAction::class, NoAuditAction::class]);
+
+    $this->artisan('agentic:list')
+        ->expectsTable(
+            ['Name', 'Surfaces', 'Read-only', 'Needs approval', 'Audit'],
+            [
+                ['audited-read', 'mcp, ai-tool, http (off), cli, job', 'yes', 'no', 'yes'],
+                ['no-audit', 'mcp, ai-tool, http (off), cli, job', 'no', 'no', 'no'],
+            ]
+        )
+        ->assertSuccessful();
+});
+
+it('reports Audit as no for every action when the global switch is off', function () {
+    config(['agentic.discovery.paths' => [], 'agentic.audit.enabled' => false]);
+    Agentic::register([AuditedReadAction::class]);
+
+    // The per-action policy still resolves true...
+    expect(app(Registry::class)->find('audited-read')->audit)->toBeTrue();
+
+    // ...but the effective column the list command shows folds in the global switch.
+    $this->artisan('agentic:list')
+        ->expectsTable(
+            ['Name', 'Surfaces', 'Read-only', 'Needs approval', 'Audit'],
+            [['audited-read', 'mcp, ai-tool, http (off), cli, job', 'yes', 'no', 'no']]
+        )
+        ->assertSuccessful();
+});
+
+it('drops the http (off) marker once the HTTP surface is enabled', function () {
+    config(['agentic.discovery.paths' => [], 'agentic.http.enabled' => true]);
+    Agentic::register([AuditedReadAction::class]);
+
+    $this->artisan('agentic:list')
+        ->expectsTable(
+            ['Name', 'Surfaces', 'Read-only', 'Needs approval', 'Audit'],
+            [['audited-read', 'mcp, ai-tool, http, cli, job', 'yes', 'no', 'yes']]
+        )
         ->assertSuccessful();
 });
 

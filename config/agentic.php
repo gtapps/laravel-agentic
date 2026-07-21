@@ -14,12 +14,14 @@ return [
     ],
 
     /*
-    | Auto-mounted HTTP surface: POST /{prefix}/actions/{name} (GET allowed
-    | for readOnly actions). Put your auth middleware here — e.g.
-    | ['api', 'auth:sanctum'].
+    | Opt-in HTTP surface: POST /{prefix}/actions/{name} (GET allowed for
+    | readOnly actions). Off by default — an action with no authorize()
+    | would otherwise be anonymously reachable. Set 'enabled' => true and
+    | put your auth middleware here — e.g. ['api', 'auth:sanctum'] — before
+    | exposing it. authorize() remains the standing gate on every surface.
     */
     'http' => [
-        'enabled' => true,
+        'enabled' => false,
         'prefix' => 'agentic',
         'middleware' => ['api'],
     ],
@@ -42,6 +44,7 @@ return [
     */
     'approvals' => [
         'ttl' => 600,
+        'connection' => null,
     ],
 
     /*
@@ -57,6 +60,7 @@ return [
     */
     'audit' => [
         'enabled' => true,
+        'connection' => null,
     ],
 
 ];

@@ -6,6 +6,11 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    public function getConnection(): ?string
+    {
+        return config('agentic.audit.connection');
+    }
+
     public function up(): void
     {
         Schema::create('agentic_action_log', function (Blueprint $table) {

@@ -15,6 +15,11 @@ class ActionLog extends Model
 
     protected $guarded = [];
 
+    public function getConnectionName(): ?string
+    {
+        return $this->connection ?? config('agentic.audit.connection');
+    }
+
     protected function casts(): array
     {
         return [

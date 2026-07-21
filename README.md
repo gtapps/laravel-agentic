@@ -104,7 +104,7 @@ authorization, approval, and audit behavior, via:
 |---|---|
 | MCP | `tools/call refund-invoice` on the server above |
 | laravel/ai | `Agentic::tools()` inside any agent's `tools()` iterable |
-| HTTP | `POST /agentic/actions/refund-invoice` (GET allowed for `readOnly`) |
+| HTTP | `POST /agentic/actions/refund-invoice` (GET allowed for `readOnly`) — opt-in, off by default (`agentic.http.enabled`) |
 | CLI | `php artisan agentic:action refund-invoice '{"invoiceId":42,"amount":99.5}' --as=1` |
 | Queue | `RunAction::dispatch('refund-invoice', $args, $userId)` |
 
@@ -205,6 +205,27 @@ Opt out per action with `#[AgentAction(..., audit: false)]` or globally
 with `agentic.audit.enabled`. `readOnly` actions are excluded by default —
 opt one in with `#[AgentAction(..., audit: true)]`.
 
+**The boundary, plainly:** audit covers calls where an action definition
+resolved — validation failures, `authorize()` denials, approval knocks,
+handler failures, and successes. It does **not** cover calls that never
+reach that point: transport/middleware rejections, controller-level
+rejections, unknown actions, or actions hidden from that surface. If you
+need a record of rejected attempts, add it at your app's transport layer.
+
+**Failure semantics:** the audit write happens *after* the handler runs,
+and is synchronous and exception-propagating. If the audit write itself
+fails, the action has already executed — the caller sees an error, but
+side effects already happened. There is no transactional fail-closed
+guarantee across the handler and the audit row.
+
+**`authorize()` is the standing gate, not exposure:** an action with no
+`authorize()` method is allowed by `Authorize` on every surface it's
+exposed to. Closing the HTTP surface (`agentic.http.enabled`, off by
+default) removes the only anonymous, auto-mounted vector — but if you
+mount MCP, any *authenticated* caller can still invoke a no-`authorize()`
+action. Write `authorize()` on every action that isn't meant to be
+universally callable.
+
 Redaction globs (`agentic.redact`, e.g. `'password'`, `'*.password'`,
 `'card.secret'`) apply to both audit rows and approval payloads — secrets
 never land in either.
@@ -257,7 +278,7 @@ it('knocks for large refunds', function () {
 return [
     'discovery' => ['paths' => [app_path('Actions')]], // scanned for #[AgentAction]
     'http' => [
-        'enabled' => true,
+        'enabled' => false,               // opt-in; set true and add your guard first
         'prefix' => 'agentic',            // POST /agentic/actions/{name}
         'middleware' => ['api'],          // add your guard, e.g. 'auth:sanctum'
     ],
@@ -265,9 +286,15 @@ return [
         'tiers' => ['unauthenticated' => []], // allowlist for anonymous callers
         'exclude' => [],                      // hard denylist, beats everything
     ],
-    'approvals' => ['ttl' => 600],        // seconds until knock/grant expires to deny
+    'approvals' => [
+        'ttl' => 600,                      // seconds until knock/grant expires to deny
+        'connection' => null,              // null = default connection
+    ],
     'redact' => [],                       // dot-path globs, e.g. '*.password'
-    'audit' => ['enabled' => true],
+    'audit' => [
+        'enabled' => true,
+        'connection' => null,              // null = default connection
+    ],
 ];
 ```
 
