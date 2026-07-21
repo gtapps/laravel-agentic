@@ -24,33 +24,41 @@ class ApprovalBroker
     public function __construct(protected Repository $config) {}
 
     /**
-     * Granted consumes atomically: one UPDATE, no read-then-write race.
+     * Granted consumes atomically: select the grant, then flip it with a
+     * PK-scoped conditional UPDATE so two concurrent callers can't both
+     * consume it. Returns the consumed approval (for audit linkage) or null.
      * A grant is void if the definition changed since approval or was
      * requested by a different principal.
      */
-    public function check(ActionDefinition $definition, string $key, ActionContext $context): CheckResult
+    public function check(ActionDefinition $definition, string $key, ActionContext $context): ?Approval
     {
         $this->expireStale($key);
 
-        $consumed = Approval::query()
+        $approval = Approval::query()
             ->where('args_hash', $key)
             ->where('status', 'granted')
             ->where('definition_hash', $definition->definitionHash)
             ->tap(fn (Builder $q) => $this->wherePrincipal($q, $context))
-            ->limit(1)
-            ->update(['status' => 'consumed', 'consumed_at' => now()]);
+            ->first();
 
-        if ($consumed > 0) {
-            return CheckResult::Granted;
+        if ($approval === null) {
+            return null;
         }
 
-        $pending = Approval::query()
-            ->where('args_hash', $key)
-            ->where('status', 'pending')
-            ->tap(fn (Builder $q) => $this->wherePrincipal($q, $context))
-            ->exists();
+        $consumedAt = now();
 
-        return $pending ? CheckResult::Pending : CheckResult::None;
+        $consumed = Approval::query()
+            ->whereKey($approval->getKey())
+            ->where('status', 'granted')
+            ->update(['status' => 'consumed', 'consumed_at' => $consumedAt]);
+
+        if ($consumed === 0) {
+            return null;
+        }
+
+        return $approval
+            ->forceFill(['status' => 'consumed', 'consumed_at' => $consumedAt])
+            ->syncOriginal();
     }
 
     /**
@@ -61,6 +69,14 @@ class ApprovalBroker
      * `active_key` (unique, non-null only while pending) is what actually
      * enforces "one pending row per (key, principal)" against a concurrent
      * duplicate create.
+     *
+     * Deliberately does NOT match definition_hash, unlike check(). The broker
+     * only learns the current hash from a live call, so decideViaArtisan() —
+     * where the operator actually decides — cannot see drift at all; filtering
+     * here would close only the narrowest timing. A knock that drifts before
+     * approval is granted void and re-knocks once. check() still refuses it,
+     * so nothing unsafe executes; the cost is one wasted approval inside the
+     * TTL window.
      */
     public function requestApproval(
         ActionDefinition $definition,

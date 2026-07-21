@@ -114,6 +114,32 @@ it('binds grants to the requesting principal: another user with identical args k
     expect(runRefund(userId: 1)->value)->toBeInstanceOf(RefundResult::class);
 });
 
+it('re-knocks instead of double-consuming when another caller wins the consume race', function () {
+    $approval = knockApproval(fn () => runRefund());
+    $this->artisan('agentic:approve', ['id' => $approval->id])->assertSuccessful();
+
+    // Fires on check()'s SELECT: a concurrent caller consumes the grant
+    // before our own conditional UPDATE can land.
+    $raced = false;
+    Approval::retrieved(function (Approval $found) use (&$raced) {
+        if ($raced || $found->status !== 'granted') {
+            return;
+        }
+
+        $raced = true;
+        Approval::query()->whereKey($found->getKey())->update(['status' => 'consumed']);
+    });
+
+    try {
+        expect(fn () => runRefund())->toThrow(ApprovalRequiredException::class)
+            ->and(Approval::where('args_hash', $approval->args_hash)->where('status', 'consumed')->count())->toBe(1);
+    } finally {
+        // Belt and braces: Testbench rebuilds the model event dispatcher per
+        // test, so the hook cannot reach the next one either way.
+        Approval::flushEventListeners();
+    }
+});
+
 it('expires unanswered knocks to deny', function () {
     $approval = knockApproval(fn () => runRefund());
     $key = $approval->args_hash;

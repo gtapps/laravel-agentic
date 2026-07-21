@@ -69,12 +69,14 @@ it('writes ok rows for successful non-readOnly runs, with redaction and forensic
 
     Agentic::run('refund-invoice', ['invoiceId' => 7, 'amount' => 10.0], auditCtx());
 
-    $rows = ActionLog::where('action', 'refund-invoice')->orderBy('created_at')->get();
+    // Order by the ULID, not created_at — both rows land in the same second.
+    $rows = ActionLog::where('action', 'refund-invoice')->orderBy('id')->get();
 
     expect($rows)->toHaveCount(2)
         ->and($rows[0]->status)->toBe('approval_required')
         ->and($rows[0]->approval_id)->not->toBeNull()
-        ->and($rows[1]->status)->toBe('ok');
+        ->and($rows[1]->status)->toBe('ok')
+        ->and($rows[1]->approval_id)->toBe($rows[0]->approval_id);
 
     $ok = $rows[1];
 

@@ -7,6 +7,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **BREAKING: `ApprovalBroker::check()` returns `?Approval` instead of `CheckResult`** — the consumed approval is now returned so the audit row for the execution can link to it; the `Gtapps\LaravelAgentic\Approvals\CheckResult` enum is deleted. Callers only ever compared against `CheckResult::Granted`, so `$broker->check(...) !== null` is the direct replacement.
 - **BREAKING: approvals are decided by approval id, not by key** — `agentic:approve` / `agentic:deny` now take the approval's ULID (`agentic:approve 01J…`), and `ApprovalBroker::decide()` / `decideViaArtisan()` take that id as their first argument. Deciding by key was ambiguous: two principals knocking with identical args share one key, so `agentic:approve <key>` could settle the wrong principal's approval. The key is still shown in the knock (and returned as `key` in the HTTP 409 body) for correlation; the new `approvalId` field carries the decision identity.
 
 - **BREAKING: HTTP surface is now opt-in** — `agentic.http.enabled` defaults to `false`. Previously the HTTP surface auto-mounted with no authentication (the `api` middleware group does not authenticate), making any action without an `authorize()` method anonymously reachable. Set `agentic.http.enabled => true` and add your auth middleware (e.g. `auth:sanctum`) to restore it.
@@ -20,6 +21,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - **approvals: one pending row per (key, principal), enforced by the database** — a new nullable-unique `active_key` column (non-null only while pending) makes duplicate concurrent knocks collide at the index instead of racing to create two pending rows. Settling is now a single conditional `UPDATE` guarded on id + status + expiry, so a second decision on an already-settled or expired row is a no-op and fires no duplicate event.
+- **audit rows now link to the approval that authorized them** — a successful run behind an approval recorded `approval_id = null`; only the knock row carried the id. The audit trail now answers "who approved this" for the execution itself, as the README promises.
 
 ### Upgrading
 

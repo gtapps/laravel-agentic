@@ -5,7 +5,6 @@ namespace Gtapps\LaravelAgentic\Kernel\Steps;
 use Gtapps\LaravelAgentic\Approvals\ApprovalBroker;
 use Gtapps\LaravelAgentic\Approvals\ApprovalRequiredException;
 use Gtapps\LaravelAgentic\Approvals\Canonicalizer;
-use Gtapps\LaravelAgentic\Approvals\CheckResult;
 use Gtapps\LaravelAgentic\Audit\Redactor;
 use Gtapps\LaravelAgentic\Kernel\ActionCall;
 use Gtapps\LaravelAgentic\Kernel\CallsActionMethods;
@@ -39,7 +38,11 @@ class ApprovalGate
 
         $key = Canonicalizer::key($definition, $call->rawArgs);
 
-        if ($this->broker->check($definition, $key, $call->context) === CheckResult::Granted) {
+        $approval = $this->broker->check($definition, $key, $call->context);
+
+        if ($approval !== null) {
+            $call->approvalId = $approval->id;
+
             return;
         }
 
