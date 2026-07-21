@@ -25,6 +25,12 @@ return new class extends Migration
             // across SQLite/MySQL/PostgreSQL (all three allow multiple NULLs
             // in a unique index).
             $table->string('active_key', 64)->nullable()->unique();
+            // sha256(surface . '|' . principal . '|' . tool-call id) for callers
+            // that supply one (today: laravel/ai). Unlike active_key this is
+            // NEVER cleared on settle, because a resumed run has to be able to
+            // find its own denied/expired/consumed row and must not mistake a
+            // sibling tool call's approval for its own.
+            $table->string('invocation_key', 64)->nullable()->index();
             $table->string('token_hash', 64);
             $table->string('requested_user_id')->nullable();
             $table->string('requested_surface');

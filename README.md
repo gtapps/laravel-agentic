@@ -97,7 +97,7 @@ use Laravel\Mcp\Facades\Mcp;
 Mcp::web('/mcp', AgenticServer::class)->middleware(['auth:sanctum']);
 ```
 
-That single definition is now callable, with identical validation,
+That single definition is now callable, with the same validation,
 authorization, approval, and audit behavior, via:
 
 | Surface | How |
@@ -144,6 +144,9 @@ it — caching is opt-in, and an app with no actions yet shouldn't fail a deploy
 3. The agent retries the identical call — it executes exactly once. The
    grant is consumed; a repeat call knocks again.
 
+On the laravel/ai surface the same consent is collected without asking the
+model to retry anything — see [Native approval on the laravel/ai surface](#native-approval-on-the-laravelai-surface).
+
 Semantics you can rely on:
 
 - Grants are keyed on `sha256(action + canonicalized args)` — different
@@ -166,6 +169,53 @@ Semantics you can rely on:
 //     }
 // }
 ```
+
+### Native approval on the laravel/ai surface
+
+laravel/ai 0.10 can pause a run for a human, so the ai-tool surface uses that
+instead of the retry protocol above: the run stops before the tool executes,
+and the model is never asked to reissue anything.
+
+The broker still decides. The knock is raised as the run pauses, before laravel/ai
+hands it back to you; `Agentic::approvalDecisions()` then reads the answers a
+human gave through any channel — `agentic:approve`, or your own — and hands
+laravel/ai the decisions it needs to continue:
+
+```php
+$response = $agent->forUser($user)->prompt('Refund invoice 42');
+
+if ($response->hasPendingApprovals()) {
+    // Returns null until every paused call has an answer, so poll (or
+    // re-enter on your approval event).
+    $decisions = Agentic::approvalDecisions($response->pendingApprovals, $user);
+
+    if ($decisions !== null) {
+        $response = $agent->continue($response->conversationId, $user)->prompt($decisions);
+    }
+}
+```
+
+Worth knowing:
+
+- **The agent must be conversational.** laravel/ai resumes a paused run from
+  stored history, so an agent without `RemembersConversations` throws
+  `ApprovalNotResumableException` when a gated tool pauses. Non-conversational
+  agents keep the in-band knock from calling the tool directly.
+- **All or nothing.** laravel/ai rejects a decision map that leaves any paused
+  call unanswered, so `approvalDecisions()` returns `null` until every call it
+  owns has one. Tool calls from outside this package are left for you to decide;
+  merge yours in.
+- **The principal must match the run.** Omitting `$user` falls back to the
+  ambient guard, as `Agentic::tools()` does. Pass the same principal to both, or
+  the grant is bound to someone other than whoever the tool executes as.
+- **Waiting has a deadline.** An unanswered knock expires at
+  `agentic.approvals.ttl` and comes back as a rejection, so polling terminates.
+- **Editing arguments re-knocks.** Consent is bound to exact arguments, so a
+  resume that rewrites them with `Decision::edit()` is a new call and asks
+  again rather than riding the existing grant.
+- **Sibling calls stay separate.** A model that emits the same tool twice with
+  identical arguments gets two approvals; releasing one does not release the
+  other.
 
 ### Wiring approvals to your own channels
 

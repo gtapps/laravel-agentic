@@ -8,10 +8,13 @@ use Gtapps\LaravelAgentic\Kernel\ActionResult;
 use Gtapps\LaravelAgentic\Kernel\Registry;
 use Gtapps\LaravelAgentic\Kernel\Runner;
 use Gtapps\LaravelAgentic\Surfaces\AiTool\ActionToolAdapter;
+use Gtapps\LaravelAgentic\Surfaces\AiTool\PendingApprovalMapper;
 use Gtapps\LaravelAgentic\Testing\AgenticFake;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Container\Container;
+use Laravel\Ai\Approvals\Decisions;
+use Laravel\Ai\Approvals\PendingApproval;
 
 class AgenticManager
 {
@@ -48,6 +51,29 @@ class AgenticManager
         $this->container->instance(Runner::class, $fake);
 
         return $fake;
+    }
+
+    /**
+     * The decisions laravel/ai needs to resume a run it paused for approval,
+     * read from the broker so consent given once — over CLI, or any channel
+     * wired to ApprovalRequested — is what releases the call.
+     *
+     * Returns null while any gated call is still unanswered; resume only once
+     * it returns a map:
+     *
+     *     if ($response->hasPendingApprovals()) {
+     *         $decisions = Agentic::approvalDecisions($response->pendingApprovals, $user);
+     *
+     *         if ($decisions !== null) {
+     *             $response = $agent->continue($response->conversationId, $user)->prompt($decisions);
+     *         }
+     *     }
+     *
+     * @param  iterable<PendingApproval>  $pendingApprovals
+     */
+    public function approvalDecisions(iterable $pendingApprovals, ?Authenticatable $as = null): ?Decisions
+    {
+        return $this->container->make(PendingApprovalMapper::class)->decisions($pendingApprovals, $as);
     }
 
     /**

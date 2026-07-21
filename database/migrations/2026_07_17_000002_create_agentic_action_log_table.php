@@ -25,6 +25,11 @@ return new class extends Migration
             $table->foreignUlid('approval_id')->nullable();
             $table->string('definition_hash', 64);
             $table->string('request_id')->nullable();
+            // The caller's own identifier for this invocation — laravel/ai's
+            // tool-call id today. Unlike request_id it survives a pause and
+            // resume, so it is what ties an execution back to the specific
+            // call a human approved.
+            $table->string('idempotency_key')->nullable()->index();
             $table->unsignedInteger('duration_ms');
             $table->timestamp('created_at');
         });

@@ -2,8 +2,11 @@
 
 use Gtapps\LaravelAgentic\Approvals\Approval;
 use Gtapps\LaravelAgentic\Approvals\ApprovalRequiredException;
+use Gtapps\LaravelAgentic\Facades\Agentic;
+use Gtapps\LaravelAgentic\Surfaces\AiTool\ActionToolAdapter;
 use Gtapps\LaravelAgentic\Tests\HttpEnabledTestCase;
 use Gtapps\LaravelAgentic\Tests\TestCase;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\Schema;
 use Workbench\App\Models\User;
 
@@ -25,6 +28,7 @@ uses(TestCase::class)->in(
     __DIR__.'/Schema',
     __DIR__.'/Testing',
     __DIR__.'/SkeletonTest.php',
+    __DIR__.'/Surfaces/AiToolApprovalTest.php',
     __DIR__.'/Surfaces/AiToolSurfaceTest.php',
     __DIR__.'/Surfaces/CliSurfaceTest.php',
     __DIR__.'/Surfaces/HttpRegistrationTest.php',
@@ -60,6 +64,19 @@ function knockApproval(callable $call): Approval
     }
 
     throw new RuntimeException('Expected an approval knock');
+}
+
+/**
+ * The first ai-tool adapter Agentic::tools() yields for an action, optionally
+ * bound to an explicit principal.
+ */
+function adapterFor(string $action = 'refund-invoice', ?Authenticatable $as = null): ActionToolAdapter
+{
+    foreach (Agentic::tools([$action], $as) as $tool) {
+        return $tool;
+    }
+
+    throw new RuntimeException("{$action} adapter not yielded");
 }
 
 function useUsersTable(): void

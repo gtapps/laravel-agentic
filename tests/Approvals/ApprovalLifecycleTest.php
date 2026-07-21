@@ -5,8 +5,10 @@ use Gtapps\LaravelAgentic\Approvals\ApprovalBroker;
 use Gtapps\LaravelAgentic\Approvals\ApprovalRequiredException;
 use Gtapps\LaravelAgentic\Enums\Surface;
 use Gtapps\LaravelAgentic\Events\ApprovalRequested;
+use Gtapps\LaravelAgentic\Exceptions\ActionDenied;
 use Gtapps\LaravelAgentic\Facades\Agentic;
 use Gtapps\LaravelAgentic\Kernel\ContextFactory;
+use Gtapps\LaravelAgentic\Kernel\Registry;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\FailClosedAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\PredicateAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\SecretAction;
@@ -14,6 +16,7 @@ use Illuminate\Auth\GenericUser;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 use Workbench\App\Actions\RefundResult;
 
 uses(RefreshDatabase::class);
@@ -26,9 +29,9 @@ beforeEach(function () {
     Gate::define('refund-invoice', fn (GenericUser $user, int $invoiceId) => in_array($user->getAuthIdentifier(), [1, 2]));
 });
 
-function ctx(int $userId = 1)
+function ctx(int $userId = 1, Surface $surface = Surface::Cli, ?string $idempotencyKey = null)
 {
-    return app(ContextFactory::class)->make(Surface::Cli, new GenericUser(['id' => $userId]));
+    return app(ContextFactory::class)->make($surface, new GenericUser(['id' => $userId]), idempotencyKey: $idempotencyKey);
 }
 
 function runRefund(int $userId = 1, array $args = ['invoiceId' => 42, 'amount' => 99.5])
@@ -85,6 +88,97 @@ it('walks the full lifecycle: knock → approve → identical retry executes →
 
     // Third identical call knocks again.
     expect(fn () => runRefund())->toThrow(ApprovalRequiredException::class);
+});
+
+it('never creates an approval row for a call that fails before the gate', function () {
+    // ActionPreparer runs Resolve → ValidateAndHydrate → Authorize ahead of the
+    // gate, so neither a denied principal nor malformed args can knock. Approval
+    // is consent layered on standing authorization — an unauthorized caller must
+    // not be able to put a pending row in front of a human to approve.
+    expect(fn () => runRefund(userId: 99))->toThrow(ActionDenied::class);
+    expect(fn () => Agentic::run('refund-invoice', ['invoiceId' => 42], ctx()))->toThrow(ValidationException::class);
+
+    expect(Approval::count())->toBe(0);
+});
+
+it('separates approvals per invocation: identical args on two tool calls knock twice', function () {
+    // laravel/ai batches tool calls, and a model routinely emits the same tool
+    // twice with identical arguments in one turn (its own suite does exactly
+    // this with toolu_1/toolu_2). Keyed on args alone those collapse into one
+    // pending row, so approving once would silently release BOTH calls.
+    $first = ctx(surface: Surface::AiTool, idempotencyKey: 'toolu_1');
+    $second = ctx(surface: Surface::AiTool, idempotencyKey: 'toolu_2');
+
+    $args = ['invoiceId' => 42, 'amount' => 99.5];
+
+    expect(fn () => Agentic::run('refund-invoice', $args, $first))->toThrow(ApprovalRequiredException::class);
+    expect(fn () => Agentic::run('refund-invoice', $args, $second))->toThrow(ApprovalRequiredException::class);
+
+    expect(Approval::where('status', 'pending')->count())->toBe(2);
+
+    // Approving one must not release the other.
+    $granted = Approval::where('status', 'pending')->orderBy('id')->first();
+    app(ApprovalBroker::class)->decideViaArtisan($granted->id, approve: true);
+
+    Agentic::run('refund-invoice', $args, $first);
+
+    expect(fn () => Agentic::run('refund-invoice', $args, $second))->toThrow(ApprovalRequiredException::class);
+});
+
+it('never mints a second approval for one invocation, whatever state the first reached', function () {
+    // settle() clears active_key, so the pending-only idempotency lookup stops
+    // matching the moment a row is granted or denied. Asking again would then
+    // slip past the unique index and mint a SECOND pending row for consent a
+    // human already answered. ApprovalGate happens to consume before it re-asks
+    // and so never triggers this, which is exactly why the guard has to live in
+    // the broker: callers outside the gate have no such ordering.
+    $ctx = ctx(surface: Surface::AiTool, idempotencyKey: 'toolu_1');
+    $args = ['invoiceId' => 42, 'amount' => 99.5];
+    $broker = app(ApprovalBroker::class);
+    $definition = app(Registry::class)->find('refund-invoice');
+
+    $key = knockKey(fn () => Agentic::run('refund-invoice', $args, $ctx));
+
+    foreach (['pending', 'granted', 'consumed'] as $state) {
+        if ($state === 'granted') {
+            $broker->decideViaArtisan(Approval::whereStatus('pending')->sole()->id, approve: true);
+        }
+
+        if ($state === 'consumed') {
+            Agentic::run('refund-invoice', $args, $ctx);
+        }
+
+        // Re-asking directly, bypassing the gate's consume-first ordering.
+        $broker->requestApproval($definition, $key, $args, $ctx);
+
+        expect(Approval::count())->toBe(1, "a second row appeared while the first was {$state}");
+    }
+
+    // A denied invocation must not get a fresh knock either.
+    $denied = ctx(surface: Surface::AiTool, idempotencyKey: 'toolu_denied');
+    knockKey(fn () => Agentic::run('refund-invoice', $args, $denied));
+    $broker->decideViaArtisan(Approval::whereStatus('pending')->sole()->id, approve: false);
+
+    $broker->requestApproval($definition, $key, $args, $denied);
+
+    expect(Approval::whereStatus('denied')->count())->toBe(1)
+        ->and(Approval::whereStatus('pending')->count())->toBe(0);
+});
+
+it('re-knocks when a resume edits the arguments, because consent is bound to exact args', function () {
+    // laravel/ai lets the resuming app swap a paused call's arguments via
+    // Decision::edit(). The gate hashes what it is about to execute, not what
+    // was approved, so the edited call misses the grant instead of riding it.
+    $ctx = ctx(surface: Surface::AiTool, idempotencyKey: 'toolu_1');
+
+    knockKey(fn () => Agentic::run('refund-invoice', ['invoiceId' => 42, 'amount' => 99.5], $ctx));
+    app(ApprovalBroker::class)->decideViaArtisan(Approval::whereStatus('pending')->sole()->id, approve: true);
+
+    // Same invocation, different arguments: the grant must not apply.
+    expect(fn () => Agentic::run('refund-invoice', ['invoiceId' => 42, 'amount' => 5000.0], $ctx))
+        ->toThrow(ApprovalRequiredException::class);
+
+    expect(Approval::whereStatus('granted')->count())->toBe(1);
 });
 
 it('keys approvals on canonical args: different args knock separately, key order does not matter', function () {

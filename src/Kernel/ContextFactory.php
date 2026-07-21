@@ -16,8 +16,12 @@ use Illuminate\Support\Str;
  */
 class ContextFactory
 {
-    public function make(Surface $caller, ?Authenticatable $user = null, ?string $requestId = null): ActionContext
-    {
-        return new Context($caller, $user, $requestId ?? (string) Str::ulid());
+    public function make(
+        Surface $caller,
+        ?Authenticatable $user = null,
+        ?string $requestId = null,
+        ?string $idempotencyKey = null,
+    ): ActionContext {
+        return new Context($caller, $user, $requestId ?? (string) Str::ulid(), $idempotencyKey);
     }
 }

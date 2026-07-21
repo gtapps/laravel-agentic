@@ -7,13 +7,9 @@ use Gtapps\LaravelAgentic\Audit\Recorder;
 use Gtapps\LaravelAgentic\Contracts\ActionContext;
 use Gtapps\LaravelAgentic\Exceptions\ActionDenied;
 use Gtapps\LaravelAgentic\Kernel\Steps\ApprovalGate;
-use Gtapps\LaravelAgentic\Kernel\Steps\Authorize;
 use Gtapps\LaravelAgentic\Kernel\Steps\Execute;
 use Gtapps\LaravelAgentic\Kernel\Steps\NormalizeResult;
-use Gtapps\LaravelAgentic\Kernel\Steps\Resolve;
-use Gtapps\LaravelAgentic\Kernel\Steps\ValidateAndHydrate;
 use Illuminate\Contracts\Container\Container;
-use Illuminate\Support\Facades\Log;
 
 /**
  * The one chokepoint: every surface funnels into run(), and all
@@ -31,11 +27,15 @@ use Illuminate\Support\Facades\Log;
  */
 class Runner
 {
-    /** @var list<class-string> */
+    /**
+     * The steps that run after ActionPreparer's Resolve → ValidateAndHydrate →
+     * Authorize prefix. The full order is unchanged and still not configurable;
+     * only the prefix moved, so the ai-tool approval hook can reuse it without
+     * gaining the ability to execute anything.
+     *
+     * @var list<class-string>
+     */
     protected const STEPS = [
-        Resolve::class,
-        ValidateAndHydrate::class,
-        Authorize::class,
         ApprovalGate::class,
         Execute::class,
         NormalizeResult::class,
@@ -44,6 +44,7 @@ class Runner
     public function __construct(
         protected Container $container,
         protected Recorder $recorder,
+        protected ActionPreparer $preparer,
     ) {}
 
     public function run(string $name, array $rawArgs, ActionContext $context): ActionResult
@@ -51,6 +52,8 @@ class Runner
         $call = new ActionCall($name, $rawArgs, $context);
 
         try {
+            $this->preparer->prepare($call);
+
             foreach (static::STEPS as $step) {
                 $this->container->make($step)($call);
             }
@@ -61,16 +64,7 @@ class Runner
                 default => 'error',
             };
 
-            try {
-                $this->recorder->record($call, $status, $e->getMessage());
-            } catch (\Throwable $recorderError) {
-                Log::warning("laravel-agentic: audit recording failed for {$name} ({$status}): {$recorderError->getMessage()}", [
-                    'action' => $name,
-                    'status' => $status,
-                    'request_id' => $context->requestId(),
-                    'exception' => $recorderError,
-                ]);
-            }
+            $this->recorder->recordSafely($call, $status, $e->getMessage());
 
             throw $e;
         }

@@ -4,11 +4,10 @@ namespace Gtapps\LaravelAgentic\Kernel\Steps;
 
 use Gtapps\LaravelAgentic\Approvals\ApprovalBroker;
 use Gtapps\LaravelAgentic\Approvals\ApprovalRequiredException;
+use Gtapps\LaravelAgentic\Approvals\ApprovalRequirement;
 use Gtapps\LaravelAgentic\Approvals\Canonicalizer;
 use Gtapps\LaravelAgentic\Audit\Redactor;
 use Gtapps\LaravelAgentic\Kernel\ActionCall;
-use Gtapps\LaravelAgentic\Kernel\CallsActionMethods;
-use Illuminate\Contracts\Container\Container;
 
 /**
  * Runs AFTER Authorize — approval is per-invocation consent on top of
@@ -20,19 +19,17 @@ use Illuminate\Contracts\Container\Container;
  */
 class ApprovalGate
 {
-    use CallsActionMethods;
-
     public function __construct(
-        protected Container $container,
         protected ApprovalBroker $broker,
         protected Redactor $redactor,
+        protected ApprovalRequirement $requirement,
     ) {}
 
     public function __invoke(ActionCall $call): void
     {
         $definition = $call->definition;
 
-        if ($definition->readOnly || ! $this->needsApproval($call)) {
+        if (! $this->requirement->required($call)) {
             return;
         }
 
@@ -56,25 +53,5 @@ class ApprovalGate
         $call->approvalId = $approval->id;
 
         throw new ApprovalRequiredException($definition->name, $key, $approval->id);
-    }
-
-    /**
-     * A throwing predicate fails CLOSED to "approval required".
-     */
-    protected function needsApproval(ActionCall $call): bool
-    {
-        $needsApproval = $call->definition->needsApproval;
-
-        if (is_bool($needsApproval)) {
-            return $needsApproval;
-        }
-
-        try {
-            $predicate = $this->container->make($needsApproval);
-
-            return (bool) $this->callAction($predicate, '__invoke', $call);
-        } catch (\Throwable) {
-            return true;
-        }
     }
 }
