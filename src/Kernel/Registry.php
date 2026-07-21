@@ -166,7 +166,7 @@ class Registry
                 'compactInputSchema' => $compactSchema,
                 'outputSchema' => $meta->outputSchema,
                 'outputMismatch' => $meta->outputMismatch->value,
-                'audit' => $meta->audit,
+                'audit' => $meta->audit ?? ! $meta->readOnly,
             ];
 
             return ActionDefinition::fromArray(

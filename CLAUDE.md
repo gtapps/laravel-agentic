@@ -112,8 +112,10 @@ matters), bound to the requesting principal, single-use, and expire to **deny**
 `ApprovalBroker` mediates; wire your own channel via the `ApprovalRequested`
 event (v1 ships no HTTP grant endpoint by design).
 
-`Recorder` writes an `agentic_action_log` row for every non-`readOnly`
-execution (success, failure, denial, or knock). `Redactor` applies
+`Recorder` writes an `agentic_action_log` row for every audited execution
+(success, failure, denial, or knock): non-`readOnly` actions by default,
+`readOnly` ones only when they opt in with `#[AgentAction(audit: true)]`.
+`Redactor` applies
 `agentic.redact` dot-path globs to **both** audit rows and approval payloads,
 so secrets never land in either.
 

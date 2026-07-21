@@ -202,7 +202,8 @@ Every non-readOnly execution — success, failure, denial, or knock — writes
 an `agentic_action_log` row: action, surface, user, redacted args, args
 hash, status, error, approval id, definition hash, request id, duration.
 Opt out per action with `#[AgentAction(..., audit: false)]` or globally
-with `agentic.audit.enabled`.
+with `agentic.audit.enabled`. `readOnly` actions are excluded by default —
+opt one in with `#[AgentAction(..., audit: true)]`.
 
 Redaction globs (`agentic.redact`, e.g. `'password'`, `'*.password'`,
 `'card.secret'`) apply to both audit rows and approval payloads — secrets

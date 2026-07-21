@@ -8,8 +8,9 @@ use Gtapps\LaravelAgentic\Kernel\ActionCall;
 use Illuminate\Contracts\Config\Repository;
 
 /**
- * One row per non-readOnly run — success, failure, denial, and
- * approval-required alike.
+ * One row per audited run — success, failure, denial, and approval-required
+ * alike. Non-readOnly actions audit by default; readOnly actions opt in via
+ * #[AgentAction(audit: true)].
  *
  * Append-only, no retention/archival in v1 — the audit trail grows without
  * bound by design; revisit if it becomes an operational concern.
@@ -26,7 +27,6 @@ class Recorder
         $definition = $call->definition;
 
         if ($definition === null
-            || $definition->readOnly
             || ! $definition->audit
             || ! $this->config->get('agentic.audit.enabled', true)) {
             return;

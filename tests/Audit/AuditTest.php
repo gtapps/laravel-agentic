@@ -7,6 +7,7 @@ use Gtapps\LaravelAgentic\Events\ActionExecuted;
 use Gtapps\LaravelAgentic\Exceptions\ActionDenied;
 use Gtapps\LaravelAgentic\Facades\Agentic;
 use Gtapps\LaravelAgentic\Kernel\ContextFactory;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\AuditedReadAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\CliOnlyAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\FailingAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\NoAuditAction;
@@ -20,7 +21,7 @@ uses(RefreshDatabase::class);
 beforeEach(function () {
     config(['agentic.discovery.paths' => [realpath(__DIR__.'/../../workbench/app/Actions')]]);
 
-    Agentic::register([CliOnlyAction::class, FailingAction::class, NoAuditAction::class]);
+    Agentic::register([CliOnlyAction::class, FailingAction::class, NoAuditAction::class, AuditedReadAction::class]);
 
     Gate::define('refund-invoice', fn (GenericUser $user, int $invoiceId) => $user->getAuthIdentifier() === 1);
 });
@@ -111,4 +112,14 @@ it('skips audit entirely when the master switch is off', function () {
     }
 
     expect(ActionLog::count())->toBe(0);
+});
+
+it('writes an ok row for a readOnly action that opts into audit', function () {
+    Agentic::run('audited-read', ['message' => 'hi'], auditCtx());
+
+    $rows = ActionLog::where('action', 'audited-read')->get();
+
+    expect($rows)->toHaveCount(1)
+        ->and($rows[0]->status)->toBe('ok')
+        ->and($rows[0]->surface)->toBe('cli');
 });
