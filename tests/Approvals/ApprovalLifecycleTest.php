@@ -125,27 +125,6 @@ it('separates approvals per invocation: identical args on two tool calls knock t
     expect(fn () => Agentic::run('refund-invoice', $args, $second))->toThrow(ApprovalRequiredException::class);
 });
 
-it('peeks at a grant without spending it, so the gate is still the only consumer', function () {
-    $ctx = ctx(surface: Surface::AiTool, idempotencyKey: 'toolu_1');
-    $args = ['invoiceId' => 42, 'amount' => 99.5];
-
-    $key = knockKey(fn () => Agentic::run('refund-invoice', $args, $ctx));
-    app(ApprovalBroker::class)->decideViaArtisan(Approval::whereStatus('pending')->sole()->id, approve: true);
-
-    $definition = app(Registry::class)->find('refund-invoice');
-    $broker = app(ApprovalBroker::class);
-
-    expect($broker->peek($definition, $key, $ctx))->not->toBeNull()
-        ->and($broker->peek($definition, $key, $ctx))->not->toBeNull()
-        ->and(Approval::whereStatus('granted')->count())->toBe(1);
-
-    // Only the gate spends it, and only once.
-    Agentic::run('refund-invoice', $args, $ctx);
-
-    expect(Approval::whereStatus('consumed')->count())->toBe(1)
-        ->and($broker->peek($definition, $key, $ctx))->toBeNull();
-});
-
 it('never mints a second approval for one invocation, whatever state the first reached', function () {
     // settle() clears active_key, so the pending-only idempotency lookup stops
     // matching the moment a row is granted or denied. Asking again would then

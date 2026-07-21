@@ -14,6 +14,7 @@ use Gtapps\LaravelAgentic\Kernel\ActionDefinition;
 use Gtapps\LaravelAgentic\Kernel\ContextFactory;
 use Gtapps\LaravelAgentic\Kernel\Registry;
 use Illuminate\Contracts\Auth\Authenticatable;
+use Illuminate\Contracts\Auth\Factory as AuthFactory;
 use Laravel\Ai\Approvals\Decision;
 use Laravel\Ai\Approvals\Decisions;
 use Laravel\Ai\Approvals\PendingApproval;
@@ -37,6 +38,7 @@ class PendingApprovalMapper
         protected ContextFactory $contexts,
         protected Redactor $redactor,
         protected Recorder $recorder,
+        protected AuthFactory $auth,
     ) {}
 
     /**
@@ -55,6 +57,14 @@ class PendingApprovalMapper
         $decisions = [];
         $awaiting = false;
 
+        // The same principal resolution ActionToolAdapter uses. The knock and
+        // the execution that later rides it must agree on who is asking:
+        // grants are bound to the requesting principal AND the invocation
+        // carries it, so a mapper defaulting to null while the tool runs as the
+        // ambient user knocks for one principal and executes as another —
+        // consent a human gave that the gate then refuses, forever.
+        $principal = $as ?? $this->auth->guard()->user();
+
         foreach ($pendingApprovals as $pending) {
             $definition = $this->registry->find($pending->tool);
 
@@ -62,7 +72,7 @@ class PendingApprovalMapper
                 continue;
             }
 
-            $context = $this->contexts->make(Surface::AiTool, $as, idempotencyKey: $pending->id);
+            $context = $this->contexts->make(Surface::AiTool, $principal, idempotencyKey: $pending->id);
 
             $decision = $this->decide($definition, $pending, $context);
 

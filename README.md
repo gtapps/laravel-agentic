@@ -204,6 +204,11 @@ Worth knowing:
   call unanswered, so `approvalDecisions()` returns `null` until every call it
   owns has one. Tool calls from outside this package are left for you to decide;
   merge yours in.
+- **The principal must match the run.** Omitting `$user` falls back to the
+  ambient guard, as `Agentic::tools()` does. Pass the same principal to both, or
+  the grant is bound to someone other than whoever the tool executes as.
+- **Waiting has a deadline.** An unanswered knock expires at
+  `agentic.approvals.ttl` and comes back as a rejection, so polling terminates.
 - **Editing arguments re-knocks.** Consent is bound to exact arguments, so a
   resume that rewrites them with `Decision::edit()` is a new call and asks
   again rather than riding the existing grant.

@@ -140,6 +140,41 @@ it('raises each knock once, however often the map is rebuilt while waiting', fun
     expect(Approval::count())->toBe(1);
 });
 
+it('expires an unanswered knock to a refusal instead of waiting forever', function () {
+    // Nothing on the native path reads by args_hash, so the invocation is the
+    // only scope that can reach the expiry rule. Without it a paused run polls
+    // a permanently 'pending' row and never resumes — approvals stop expiring
+    // to deny, which is the one thing the TTL exists to guarantee.
+    $user = new GenericUser(['id' => 1]);
+    $pending = [new PendingApproval('toolu_1', 'refund-invoice', ['invoiceId' => 42, 'amount' => 99.5])];
+
+    expect(Agentic::approvalDecisions($pending, $user))->toBeNull();
+
+    $this->travel(20)->minutes();
+
+    expect(Agentic::approvalDecisions($pending, $user)->get('toolu_1')->isRejected())->toBeTrue()
+        ->and(Approval::sole()->status)->toBe('expired');
+});
+
+it('knocks as the ambient guard user when no principal is passed, like the adapter does', function () {
+    // The knock and the execution that rides it must agree on who is asking:
+    // a mapper defaulting to null while the tool runs as the logged-in user
+    // binds the grant to a different principal, and the gate refuses consent a
+    // human really gave — knocking again, forever.
+    auth()->setUser(new GenericUser(['id' => 1]));
+
+    $adapter = adapterFor();
+    $args = ['invoiceId' => 42, 'amount' => 99.5];
+
+    expect(Agentic::approvalDecisions([new PendingApproval('toolu_1', 'refund-invoice', $args)]))->toBeNull();
+
+    app(ApprovalBroker::class)->decideViaArtisan(Approval::whereStatus('pending')->sole()->id, approve: true);
+
+    expect(json_decode((string) $adapter->handle(toolRequest($args)), true))
+        ->toMatchArray(['invoiceId' => 42, 'status' => 'refunded'])
+        ->and(Approval::count())->toBe(1);
+});
+
 it('skips tool calls this package does not own', function () {
     // Null alone would also describe "still awaiting an answer", so the row
     // count is the discriminator: an owned, gated call always leaves a knock

@@ -32,7 +32,7 @@ class ApprovalBroker
      */
     public function check(ActionDefinition $definition, string $key, ActionContext $context): ?Approval
     {
-        $this->expireStale($key);
+        $this->expireStale('args_hash', $key);
 
         $approval = $this->findGranted($definition, $key, $context);
 
@@ -57,26 +57,19 @@ class ApprovalBroker
     }
 
     /**
-     * The non-consuming twin of check(): same predicate, but the grant is left
-     * intact (it still expires stale rows, as every read here does). Callers
-     * that need to know whether a grant exists WITHOUT burning it use this,
-     * because a single-use grant must be spent by the gate on the execution
-     * path and nowhere else.
-     */
-    public function peek(ActionDefinition $definition, string $key, ActionContext $context): ?Approval
-    {
-        $this->expireStale($key);
-
-        return $this->findGranted($definition, $key, $context);
-    }
-
-    /**
      * The row for one native invocation in whatever state it reached, so a
      * caller mapping a paused run can tell "refused" from "not answered yet" —
      * a distinction the grant-only reads above deliberately cannot make.
+     *
+     * Expires first, like every other read here: nothing else on the native
+     * path is keyed on args_hash, so without this an unanswered knock would
+     * read as 'pending' forever and the paused run would poll indefinitely
+     * instead of expiring to deny.
      */
     public function stateFor(string $invocationKey): ?Approval
     {
+        $this->expireStale('invocation_key', $invocationKey);
+
         return Approval::query()
             ->where('invocation_key', $invocationKey)
             ->orderByDesc('id')
@@ -246,14 +239,18 @@ class ApprovalBroker
     }
 
     /**
-     * Expiry → deny, enforced lazily — no scheduler in v1. Clears
-     * active_key so an expired pending row never blocks a fresh knock for
-     * the same (key, principal).
+     * Expiry → deny, enforced lazily — no scheduler in v1. Clears active_key
+     * so an expired pending row never blocks a fresh knock for the same
+     * (key, principal).
+     *
+     * Both read paths reach it by whichever column identifies their row —
+     * args_hash for the retry-based flow, invocation_key for the native one —
+     * so the expiry rule can never be changed for one and missed for the other.
      */
-    protected function expireStale(string $key): void
+    protected function expireStale(string $column, string $value): void
     {
         Approval::query()
-            ->where('args_hash', $key)
+            ->where($column, $value)
             ->whereIn('status', ['pending', 'granted'])
             ->where('expires_at', '<', now())
             ->update(['status' => 'expired', 'active_key' => null]);
