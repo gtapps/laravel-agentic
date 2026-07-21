@@ -103,7 +103,7 @@ authorization, approval, and audit behavior, via:
 | Surface | How |
 |---|---|
 | MCP | `tools/call refund-invoice` on the server above |
-| laravel/ai | `Agentic::tools()` inside any agent's `tools()` iterable |
+| laravel/ai | `Agentic::tools()` inside any agent's `tools()` iterable — `Agentic::tools($only, $user)` pins an explicit principal instead of the ambient guard |
 | HTTP | `POST /agentic/actions/refund-invoice` (GET allowed for `readOnly`) — opt-in, off by default (`agentic.http.enabled`) |
 | CLI | `php artisan agentic:action refund-invoice '{"invoiceId":42,"amount":99.5}' --as=1` |
 | Queue | `RunAction::dispatch('refund-invoice', $args, $userId)` |
