@@ -44,6 +44,7 @@ class Recorder
             'approval_id' => $call->approvalId,
             'definition_hash' => $definition->definitionHash,
             'request_id' => $call->context->requestId(),
+            'idempotency_key' => $call->context->idempotencyKey(),
             'duration_ms' => (int) round((microtime(true) - $call->startedAt) * 1000),
         ]);
 

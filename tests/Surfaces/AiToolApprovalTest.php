@@ -2,7 +2,11 @@
 
 use Gtapps\LaravelAgentic\Approvals\Approval;
 use Gtapps\LaravelAgentic\Approvals\ApprovalBroker;
+use Gtapps\LaravelAgentic\Approvals\ApprovalRequiredException;
+use Gtapps\LaravelAgentic\Audit\ActionLog;
+use Gtapps\LaravelAgentic\Enums\Surface;
 use Gtapps\LaravelAgentic\Facades\Agentic;
+use Gtapps\LaravelAgentic\Kernel\ContextFactory;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\ReadOnlyLookupAction;
 use Illuminate\Auth\GenericUser;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -156,4 +160,32 @@ it('refuses a call whose action changed after the human was asked', function () 
     Approval::query()->update(['definition_hash' => str_repeat('0', 64)]);
 
     expect(Agentic::approvalDecisions($pending, $user)->get('toolu_1')->isRejected())->toBeTrue();
+});
+
+it('records the tool-call id on the audit row, and the executed arguments', function () {
+    $adapter = adapterFor(as: new GenericUser(['id' => 1]));
+
+    $adapter->handle(toolRequest());
+    app(ApprovalBroker::class)->decideViaArtisan(Approval::whereStatus('pending')->sole()->id, approve: true);
+    $adapter->handle(toolRequest());
+
+    $row = ActionLog::where('status', 'ok')->sole();
+
+    expect($row->idempotency_key)->toBe('toolu_1')
+        ->and($row->args)->toMatchArray(['invoiceId' => 42, 'amount' => 99.5])
+        ->and(ActionLog::where('status', 'approval_required')->sole()->idempotency_key)->toBe('toolu_1');
+});
+
+it('leaves the idempotency key null on surfaces that have no tool-call id', function () {
+    $cli = app(ContextFactory::class)->make(Surface::Cli, new GenericUser(['id' => 1]));
+
+    try {
+        Agentic::run('refund-invoice', ['invoiceId' => 42, 'amount' => 99.5], $cli);
+    } catch (ApprovalRequiredException) {
+        // The knock is enough — it is audited like any other outcome.
+    }
+
+    expect(ActionLog::sole())
+        ->idempotency_key->toBeNull()
+        ->surface->toBe('cli');
 });
