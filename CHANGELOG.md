@@ -3,7 +3,7 @@
 All notable changes to `gtapps/laravel-agentic` are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.0.3] - 2026-07-21
 
 ### Changed
 
