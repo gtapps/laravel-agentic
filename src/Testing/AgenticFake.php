@@ -88,7 +88,8 @@ class AgenticFake extends Runner
 
     /**
      * The fake never writes audit rows; audited-here means the action ran
-     * AND its real definition would audit it (non-readOnly, audit: true).
+     * AND its real definition resolved to audit — non-readOnly by default,
+     * readOnly only with #[AgentAction(audit: true)].
      */
     public function assertAudited(string $name): void
     {
@@ -97,7 +98,6 @@ class AgenticFake extends Runner
         $definition = $this->registry->find($name);
 
         Assert::assertNotNull($definition, "Action [{$name}] is not registered.");
-        Assert::assertFalse($definition->readOnly, "Action [{$name}] is readOnly and never audited.");
-        Assert::assertTrue($definition->audit, "Action [{$name}] opted out of audit.");
+        Assert::assertTrue($definition->audit, "Action [{$name}] is not audited.");
     }
 }

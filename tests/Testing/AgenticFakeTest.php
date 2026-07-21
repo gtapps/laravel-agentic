@@ -6,6 +6,7 @@ use Gtapps\LaravelAgentic\Audit\ActionLog;
 use Gtapps\LaravelAgentic\Enums\Surface;
 use Gtapps\LaravelAgentic\Facades\Agentic;
 use Gtapps\LaravelAgentic\Kernel\ContextFactory;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\AuditedReadAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\ReadOnlyLookupAction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\AssertionFailedError;
@@ -69,5 +70,15 @@ it('fails assertAudited for readOnly or opted-out actions', function () {
     Agentic::run('lookup', ['message' => 'x'], fakeCtx());
 
     expect(fn () => $fake->assertAudited('lookup'))
-        ->toThrow(AssertionFailedError::class);
+        ->toThrow(AssertionFailedError::class, 'Action [lookup] is not audited.');
+});
+
+it('asserts audited for a readOnly action that opts into audit', function () {
+    Agentic::register([AuditedReadAction::class]);
+
+    $fake = Agentic::fake();
+
+    Agentic::run('audited-read', ['message' => 'x'], fakeCtx());
+
+    $fake->assertAudited('audited-read');
 });
