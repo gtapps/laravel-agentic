@@ -3,6 +3,7 @@
 use Gtapps\LaravelAgentic\Approvals\ApprovalRequiredException;
 use Gtapps\LaravelAgentic\Audit\ActionLog;
 use Gtapps\LaravelAgentic\Audit\Recorder;
+use Gtapps\LaravelAgentic\Audit\Redactor;
 use Gtapps\LaravelAgentic\Enums\Surface;
 use Gtapps\LaravelAgentic\Events\ActionExecuted;
 use Gtapps\LaravelAgentic\Exceptions\ActionDenied;
@@ -17,6 +18,7 @@ use Illuminate\Auth\GenericUser;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 
 uses(RefreshDatabase::class);
 
@@ -31,6 +33,21 @@ beforeEach(function () {
 function auditCtx(int $userId = 1)
 {
     return app(ContextFactory::class)->make(Surface::Cli, new GenericUser(['id' => $userId]));
+}
+
+/**
+ * Binds a Recorder whose every write fails, to exercise the Runner's
+ * deliberately asymmetric handling of audit-infrastructure failures.
+ */
+function bindFailingRecorder(): void
+{
+    app()->instance(Recorder::class, new class(app(Redactor::class), app('config')) extends Recorder
+    {
+        public function record(ActionCall $call, string $status, ?string $error = null): void
+        {
+            throw new RuntimeException('audit write failed');
+        }
+    });
 }
 
 it('writes ok rows for successful non-readOnly runs, with redaction and forensics fields', function () {
@@ -99,22 +116,24 @@ it('writes an error row when the handler throws', function () {
 });
 
 it('preserves the original exception when error-path audit recording fails', function () {
-    app()->instance(Recorder::class, new class extends Recorder
-    {
-        public function __construct() {}
+    bindFailingRecorder();
 
-        public function record(ActionCall $call, string $status, ?string $error = null): void
-        {
-            throw new RuntimeException('audit write failed');
-        }
-    });
+    Log::spy();
 
-    try {
-        Agentic::run('failing', ['message' => 'boom'], auditCtx());
-        $this->fail('Expected the original RuntimeException');
-    } catch (RuntimeException $e) {
-        expect($e->getMessage())->toContain('handler exploded');
-    }
+    expect(fn () => Agentic::run('failing', ['message' => 'boom'], auditCtx()))
+        ->toThrow(RuntimeException::class, 'handler exploded');
+
+    Log::shouldHaveReceived('warning')->withArgs(
+        fn (...$args) => str_contains($args[0], 'failing')
+            && str_contains($args[0], 'audit write failed')
+    );
+});
+
+it('fails loud when success-path audit recording fails', function () {
+    bindFailingRecorder();
+
+    expect(fn () => Agentic::run('audited-read', ['message' => 'hi'], auditCtx()))
+        ->toThrow(RuntimeException::class, 'audit write failed');
 });
 
 it('skips audit for readOnly actions and per-action opt-out', function () {

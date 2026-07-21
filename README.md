@@ -137,8 +137,8 @@ it — caching is opt-in, and an app with no actions yet shouldn't fail a deploy
    Pending under key `abc…`. Ask a human to run: `php artisan
    agentic:approve abc…`. Then retry this exact call unchanged."*
 2. A human runs `agentic:approve <key>` (or `agentic:deny <key>`).
-3. The agent retries the identical call — the consumed grant runs it once
-   and only once; a repeat call knocks again.
+3. The agent retries the identical call — it executes exactly once. The
+   grant is consumed; a repeat call knocks again.
 
 Semantics you can rely on:
 

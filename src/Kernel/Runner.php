@@ -20,6 +20,14 @@ use Illuminate\Support\Facades\Log;
  * guarantees live inside it. Fixed step order, not user-configurable.
  * Audit wraps the pipeline so denials, knocks, and failures are recorded
  * alongside successes.
+ *
+ * The two record() calls treat a failing Recorder differently, on purpose.
+ * On the error path a recorder failure is logged and swallowed, because the
+ * caller is owed the exception the pipeline actually raised — masking it with
+ * an audit-infrastructure error loses the real cause. On the success path a
+ * recorder failure propagates: an audited action that completed with no row
+ * written is an audit-integrity hole, and the caller must hear about it rather
+ * than receive a success that the trail has no record of.
  */
 class Runner
 {
@@ -47,14 +55,21 @@ class Runner
                 $this->container->make($step)($call);
             }
         } catch (\Throwable $e) {
+            $status = match (true) {
+                $e instanceof ApprovalRequiredException => 'approval_required',
+                $e instanceof ActionDenied => 'denied',
+                default => 'error',
+            };
+
             try {
-                $this->recorder->record($call, match (true) {
-                    $e instanceof ApprovalRequiredException => 'approval_required',
-                    $e instanceof ActionDenied => 'denied',
-                    default => 'error',
-                }, $e->getMessage());
+                $this->recorder->record($call, $status, $e->getMessage());
             } catch (\Throwable $recorderError) {
-                Log::warning("laravel-agentic: audit recording failed: {$recorderError->getMessage()}");
+                Log::warning("laravel-agentic: audit recording failed for {$name} ({$status}): {$recorderError->getMessage()}", [
+                    'action' => $name,
+                    'status' => $status,
+                    'request_id' => $context->requestId(),
+                    'exception' => $recorderError,
+                ]);
             }
 
             throw $e;
