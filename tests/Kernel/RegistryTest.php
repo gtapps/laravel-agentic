@@ -140,3 +140,32 @@ it('caches and clears the manifest like route:cache', function () {
 
     expect(app(Registry::class)->definitions())->toBe([]);
 });
+
+it('refuses to cache an empty manifest and writes no file', function () {
+    config(['agentic.discovery.paths' => []]);
+
+    $registry = app(Registry::class);
+
+    $this->artisan('agentic:cache')->assertFailed();
+
+    expect(is_file($registry->cachePath()))->toBeFalse();
+});
+
+it('lets --allow-empty cache an intentionally empty manifest', function () {
+    config(['agentic.discovery.paths' => []]);
+
+    $registry = app(Registry::class);
+
+    $this->artisan('agentic:cache', ['--allow-empty' => true])->assertSuccessful();
+
+    expect(is_file($registry->cachePath()))->toBeTrue()
+        ->and($registry->definitions())->toBe([]);
+});
+
+it('reports the number of cached actions', function () {
+    config(['agentic.discovery.paths' => [realpath(__DIR__.'/../../workbench/app/Actions')]]);
+
+    $count = app(Registry::class)->cache();
+
+    expect($count)->toBeGreaterThan(0);
+});

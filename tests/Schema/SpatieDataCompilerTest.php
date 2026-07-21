@@ -7,11 +7,13 @@ use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\ClosureData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\CollectionData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\ConstraintsData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\DefaultsData;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\EnumArrayData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\EnumData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\NestedData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\NullableData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\PlainArrayData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\PureEnumData;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\ScalarArrayData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\ScalarsData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\SelfRefData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\Suit;
@@ -83,6 +85,14 @@ dataset('schema fixtures', [
         'additionalProperties' => false,
         'required' => ['addresses'],
     ]],
+    'scalar arrays' => [ScalarArrayData::class, [
+        'type' => 'object',
+        'properties' => [
+            'ids' => ['type' => 'array', 'items' => ['type' => 'integer'], 'default' => []],
+            'tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'default' => []],
+        ],
+        'additionalProperties' => false,
+    ]],
     'constraints' => [ConstraintsData::class, [
         'type' => 'object',
         'properties' => [
@@ -114,6 +124,7 @@ it('is deterministic across repeated compiles', function () {
 dataset('unsupported fixtures', [
     'union type' => [UnionData::class, 'union'],
     'plain array without DataCollectionOf' => [PlainArrayData::class, 'DataCollectionOf'],
+    'enum array (class-typed items unsupported in v1)' => [EnumArrayData::class, 'DataCollectionOf'],
     'closure' => [ClosureData::class, 'unsupported'],
     'pure enum' => [PureEnumData::class, 'non-backed'],
     'non-Data class' => [Suit::class, 'not a subclass'],
@@ -160,6 +171,19 @@ it('hydrates nested data and collections', function () {
     expect($collection->addresses)->toHaveCount(2)
         ->and($collection->addresses[1])->toBeInstanceOf(AddressData::class)
         ->and($collection->addresses[1]->city)->toBe('Porto');
+});
+
+it('hydrates scalar array input end to end', function () {
+    // Items aren't cast per-element (no #[DataCollectionOf] caster applies to a
+    // plain `array` property) — the schema's `items` constraint is what makes
+    // them validate at all; hydration passes the raw values through as-is.
+    $dto = (new SpatieDataCompiler)->hydrate(ScalarArrayData::class, [
+        'ids' => [1, 2, 3],
+        'tags' => ['a', 'b'],
+    ]);
+
+    expect($dto->ids)->toBe([1, 2, 3])
+        ->and($dto->tags)->toBe(['a', 'b']);
 });
 
 it('casts enums and applies defaults on hydration', function () {

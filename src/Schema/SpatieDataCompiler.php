@@ -122,10 +122,7 @@ class SpatieDataCompiler implements SchemaCompiler
 
         if ($type->isBuiltin()) {
             return match ($name) {
-                'string' => ['type' => 'string'],
-                'int' => ['type' => 'integer'],
-                'float' => ['type' => 'number'],
-                'bool' => ['type' => 'boolean'],
+                'string', 'int', 'float', 'bool' => $this->scalarTypeSchema($name),
                 'array' => $this->arraySchema($dtoClass, $property),
                 default => throw UnsupportedSchemaType::forProperty(
                     $dtoClass, $property->getName(), "builtin type '{$name}' is unsupported in v1"
@@ -150,16 +147,58 @@ class SpatieDataCompiler implements SchemaCompiler
     {
         $of = $property->getAttributes(DataCollectionOf::class)[0] ?? null;
 
-        if ($of === null) {
-            throw UnsupportedSchemaType::forProperty(
-                $dtoClass, $property->getName(), 'array property requires #[DataCollectionOf] in v1'
-            );
+        if ($of !== null) {
+            return [
+                'type' => 'array',
+                'items' => $this->compileObject($of->newInstance()->class),
+            ];
         }
 
-        return [
-            'type' => 'array',
-            'items' => $this->compileObject($of->newInstance()->class),
-        ];
+        $items = $this->scalarItemsFromDocblock($dtoClass, $property);
+
+        if ($items !== null) {
+            return ['type' => 'array', 'items' => $items];
+        }
+
+        throw UnsupportedSchemaType::forProperty(
+            $dtoClass, $property->getName(),
+            'array property requires #[DataCollectionOf] (object items) or a @var T[] docblock '
+            .'with T = int|string|float|bool in v1'
+        );
+    }
+
+    /**
+     * Scalar array element type inferred from a `@var T[]` docblock, since
+     * #[DataCollectionOf] only supports Data-object items. Limited to builtin
+     * scalars in v1 — a class-typed T (e.g. a backed enum) would need resolving
+     * a possibly-short name against the file's use-statements, which formatters
+     * like Pint's fully_qualified_strict_types rule can rewrite unpredictably;
+     * out of scope until that's resolved properly.
+     */
+    protected function scalarItemsFromDocblock(string $dtoClass, ReflectionProperty $property): ?array
+    {
+        $doc = $property->getDocComment();
+
+        if ($doc === false || ! preg_match('/@var\s+(int|string|float|bool)\[\]/', $doc, $matches)) {
+            return null;
+        }
+
+        return $this->scalarTypeSchema($matches[1]);
+    }
+
+    /**
+     * JSON Schema type for a builtin PHP scalar name, shared by direct property
+     * types (typeSchema) and array docblock element types (scalarItemsFromDocblock)
+     * so the two mappings can't drift apart.
+     */
+    protected function scalarTypeSchema(string $name): array
+    {
+        return match ($name) {
+            'string' => ['type' => 'string'],
+            'int' => ['type' => 'integer'],
+            'float' => ['type' => 'number'],
+            'bool' => ['type' => 'boolean'],
+        };
     }
 
     protected function enumSchema(string $dtoClass, ReflectionProperty $property, string $enumClass): array

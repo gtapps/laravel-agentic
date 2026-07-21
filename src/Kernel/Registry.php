@@ -63,9 +63,21 @@ class Registry
         return $this->app->bootstrapPath('cache/agentic.php');
     }
 
-    public function cache(): void
+    /**
+     * Cache the compiled manifest and return the number of actions written.
+     * Refuses to write an empty manifest unless $allowEmpty — an empty file
+     * would otherwise shadow every later register() call (definitions() prefers
+     * a present cache file), so returns 0 without writing in that case.
+     */
+    public function cache(bool $allowEmpty = false): int
     {
-        $definitions = array_map(fn (ActionDefinition $d) => $d->toArray(), $this->build());
+        $built = $this->build();
+
+        if ($built === [] && ! $allowEmpty) {
+            return 0;
+        }
+
+        $definitions = array_map(fn (ActionDefinition $d) => $d->toArray(), $built);
 
         file_put_contents(
             $this->cachePath(),
@@ -73,6 +85,8 @@ class Registry
         );
 
         $this->definitions = null;
+
+        return count($built);
     }
 
     public function clearCache(): void
