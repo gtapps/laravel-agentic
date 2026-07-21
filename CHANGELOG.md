@@ -12,6 +12,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **approving no longer settles an arbitrary principal's knock** — an approval key omits the user id (so it reads the same on every surface), which means it addresses one pending knock *per principal*. Both decision paths resolved that to "whichever row came back first": `agentic:approve`/`agentic:deny` could grant a request the operator was never shown, and `decide($key, $token, …)` could **silently reject a valid token** whenever it landed on another principal's row. `decide()` now matches the token against every knock on the key; the commands refuse an ambiguous key and list the candidates for `--id`. **API:** `decideViaArtisan()` takes a third `?string $approvalId` argument, and the protected `findPending()` is replaced by a public `pendingFor()` returning every pending knock on a key — override the latter if you were overriding the former.
 - **audit rows now link to the approval that authorized them** — a successful run behind an approval recorded `approval_id = null`; only the knock row carried the id. The audit trail now answers "who approved this" for the execution itself, as the README promises.
 
 ### Added

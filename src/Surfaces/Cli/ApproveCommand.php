@@ -7,16 +7,21 @@ use Illuminate\Console\Command;
 
 class ApproveCommand extends Command
 {
-    protected $signature = 'agentic:approve {key : The approval key shown to the agent}';
+    use ResolvesApprovalKey;
+
+    protected $signature = 'agentic:approve
+        {key : The approval key shown to the agent}
+        {--id= : Which knock to grant, when the key matches more than one}';
 
     protected $description = 'Grant a pending agentic approval (trusted local, no token)';
 
     public function handle(ApprovalBroker $broker): int
     {
-        if (! $broker->decideViaArtisan($this->argument('key'), approve: true)) {
-            $this->error('No pending approval found for that key (it may have expired).');
+        $key = $this->argument('key');
+        $id = $this->option('id');
 
-            return self::FAILURE;
+        if (! $broker->decideViaArtisan($key, approve: true, approvalId: $id)) {
+            return $this->reportUnresolved($broker, $key, $id);
         }
 
         $this->info('Approved. The agent can now retry the identical call once.');

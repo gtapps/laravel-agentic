@@ -7,16 +7,21 @@ use Illuminate\Console\Command;
 
 class DenyCommand extends Command
 {
-    protected $signature = 'agentic:deny {key : The approval key shown to the agent}';
+    use ResolvesApprovalKey;
+
+    protected $signature = 'agentic:deny
+        {key : The approval key shown to the agent}
+        {--id= : Which knock to deny, when the key matches more than one}';
 
     protected $description = 'Deny a pending agentic approval';
 
     public function handle(ApprovalBroker $broker): int
     {
-        if (! $broker->decideViaArtisan($this->argument('key'), approve: false)) {
-            $this->error('No pending approval found for that key (it may have expired).');
+        $key = $this->argument('key');
+        $id = $this->option('id');
 
-            return self::FAILURE;
+        if (! $broker->decideViaArtisan($key, approve: false, approvalId: $id)) {
+            return $this->reportUnresolved($broker, $key, $id);
         }
 
         $this->info('Denied.');

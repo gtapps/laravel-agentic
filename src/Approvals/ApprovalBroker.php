@@ -9,6 +9,7 @@ use Gtapps\LaravelAgentic\Events\ApprovalRequested;
 use Gtapps\LaravelAgentic\Kernel\ActionDefinition;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 
 /**
  * Retry-based approvals: single-use grants keyed on
@@ -65,6 +66,14 @@ class ApprovalBroker
      * Idempotent per (key, principal) while pending. Returns the pending
      * approval; fires ApprovalRequested with the plaintext capability token
      * (stored only as a sha256 hash) on first creation.
+     *
+     * Deliberately does NOT match definition_hash, unlike check(). The broker
+     * only learns the current hash from a live call, so decideViaArtisan() —
+     * where the operator actually decides — cannot see drift at all; filtering
+     * here would close only the narrowest timing. A knock that drifts before
+     * approval is granted void and re-knocks once. check() still refuses it,
+     * so nothing unsafe executes; the cost is one wasted approval inside the
+     * TTL window.
      */
     public function requestApproval(
         ActionDefinition $definition,
@@ -105,12 +114,19 @@ class ApprovalBroker
      * Programmatic grant/deny — REQUIRES the capability token (timing-safe
      * compare). Artisan uses decideViaArtisan() instead because the local
      * process boundary is already trusted.
+     *
+     * The token, not the key, identifies the row: a key addresses one knock
+     * per principal, so settling "the first pending row" would reject a valid
+     * token whenever another principal knocked with identical args.
      */
     public function decide(string $key, string $token, bool $approve, ?string $decidedBy = null): bool
     {
-        $approval = $this->findPending($key);
+        $tokenHash = hash('sha256', $token);
 
-        if ($approval === null || ! hash_equals($approval->token_hash, hash('sha256', $token))) {
+        $approval = $this->pendingFor($key)
+            ->first(fn (Approval $approval) => hash_equals($approval->token_hash, $tokenHash));
+
+        if ($approval === null) {
             return false;
         }
 
@@ -122,10 +138,21 @@ class ApprovalBroker
     /**
      * Token-free grant/deny for the agentic:approve / agentic:deny commands.
      * Anyone with artisan has tinker; the process boundary is the trust line.
+     *
+     * Nothing here disambiguates a key that addresses several knocks, so an
+     * ambiguous key REFUSES rather than settling an arbitrary one — the
+     * operator passes $approvalId to say which. Returns false either way;
+     * the commands render the difference from pendingFor().
      */
-    public function decideViaArtisan(string $key, bool $approve): bool
+    public function decideViaArtisan(string $key, bool $approve, ?string $approvalId = null): bool
     {
-        $approval = $this->findPending($key);
+        $pending = $this->pendingFor($key);
+
+        $approval = match (true) {
+            $approvalId !== null => $pending->first(fn (Approval $approval) => $approval->id === $approvalId),
+            $pending->count() === 1 => $pending->first(),
+            default => null,
+        };
 
         if ($approval === null) {
             return false;
@@ -136,14 +163,21 @@ class ApprovalBroker
         return true;
     }
 
-    protected function findPending(string $key): ?Approval
+    /**
+     * Every live knock a key addresses, oldest first. The key omits the user
+     * id by design (see wherePrincipal), so this is one row per principal.
+     *
+     * @return Collection<int, Approval>
+     */
+    public function pendingFor(string $key): Collection
     {
         $this->expireStale($key);
 
         return Approval::query()
             ->where('args_hash', $key)
             ->where('status', 'pending')
-            ->first();
+            ->orderBy('id')
+            ->get();
     }
 
     protected function settle(Approval $approval, bool $approve, ?string $decidedBy): void

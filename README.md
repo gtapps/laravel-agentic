@@ -145,7 +145,12 @@ Semantics you can rely on:
 - Grants are keyed on `sha256(action + canonicalized args)` — different
   arguments knock separately; argument order never matters.
 - Grants are **bound to the requesting principal**: another user (or agent
-  token) with identical args knocks separately.
+  token) with identical args knocks separately. The key omits the user id so
+  it reads the same on every surface, so it addresses one knock *per
+  principal* — when two principals are waiting on identical args,
+  `agentic:approve <key>` refuses and lists them for you to pick with
+  `--id`. `decide()` needs no such flag: the capability token identifies the
+  knock on its own.
 - Unanswered knocks and unconsumed grants **expire to deny**
   (`agentic.approvals.ttl`, default 10 minutes).
 - A **throwing `needsApproval` predicate fails closed** to "approval
