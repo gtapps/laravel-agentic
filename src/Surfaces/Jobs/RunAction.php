@@ -5,6 +5,7 @@ namespace Gtapps\LaravelAgentic\Surfaces\Jobs;
 use Gtapps\LaravelAgentic\AgenticManager;
 use Gtapps\LaravelAgentic\Approvals\ApprovalRequiredException;
 use Gtapps\LaravelAgentic\Enums\Surface;
+use Gtapps\LaravelAgentic\Exceptions\RequestedUserNotFound;
 use Gtapps\LaravelAgentic\Kernel\ContextFactory;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
@@ -24,9 +25,15 @@ class RunAction implements ShouldQueue
 
     public function handle(AgenticManager $agentic, ContextFactory $contexts, AuthFactory $auth): void
     {
-        $user = $this->userId !== null
-            ? $auth->guard()->getProvider()->retrieveById($this->userId)
-            : null;
+        $user = null;
+
+        if ($this->userId !== null) {
+            $user = $auth->guard()->getProvider()->retrieveById($this->userId);
+
+            if ($user === null) {
+                throw RequestedUserNotFound::forId($this->userId);
+            }
+        }
 
         $context = $contexts->make(Surface::Job, $user);
 

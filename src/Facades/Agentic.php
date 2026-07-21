@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Facade;
 /**
  * @method static void register(array $classes)
  * @method static \Gtapps\LaravelAgentic\Kernel\ActionResult run(string $name, array $args, \Gtapps\LaravelAgentic\Contracts\ActionContext $context)
- * @method static iterable tools(?array $only = null)
+ * @method static iterable tools(?array $only = null, ?\Illuminate\Contracts\Auth\Authenticatable $as = null)
  * @method static \Gtapps\LaravelAgentic\Testing\AgenticFake fake()
  *
  * @see AgenticManager
