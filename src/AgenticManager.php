@@ -9,6 +9,7 @@ use Gtapps\LaravelAgentic\Kernel\Registry;
 use Gtapps\LaravelAgentic\Kernel\Runner;
 use Gtapps\LaravelAgentic\Surfaces\AiTool\ActionToolAdapter;
 use Gtapps\LaravelAgentic\Testing\AgenticFake;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Container\Container;
 
@@ -54,9 +55,12 @@ class AgenticManager
      * agent's tools() iterable.
      *
      * @param  list<string>|null  $only  restrict to these action names
+     * @param  ?Authenticatable  $as  explicit principal for the running
+     *                                conversation; falls back to the ambient
+     *                                guard when omitted
      * @return iterable<ActionToolAdapter>
      */
-    public function tools(?array $only = null): iterable
+    public function tools(?array $only = null, ?Authenticatable $as = null): iterable
     {
         foreach ($this->registry->definitions() as $definition) {
             if (! $definition->exposedTo(Surface::AiTool)) {
@@ -67,7 +71,10 @@ class AgenticManager
                 continue;
             }
 
-            yield $this->container->make(ActionToolAdapter::class, ['definition' => $definition]);
+            yield $this->container->make(ActionToolAdapter::class, [
+                'definition' => $definition,
+                'principal' => $as,
+            ]);
         }
     }
 }

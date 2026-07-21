@@ -62,7 +62,7 @@ it('executes through the same pipeline with the running agent\'s user, auditing 
 
     expect($knock)->toContain("Approval required for action 'refund-invoice'");
 
-    $this->artisan('agentic:approve', ['key' => approvalKey($knock)])->assertSuccessful();
+    $this->artisan('agentic:approve', ['id' => approvalId($knock)])->assertSuccessful();
 
     $result = json_decode((string) $adapter->handle(new Request($args)), true);
 
@@ -81,7 +81,7 @@ it('produces audit rows identical to MCP apart from surface', function () {
 
     $knock = (string) $adapter->handle(new Request($args));
     $key = approvalKey($knock);
-    $this->artisan('agentic:approve', ['key' => $key])->assertSuccessful();
+    $this->artisan('agentic:approve', ['id' => approvalId($knock)])->assertSuccessful();
     $adapter->handle(new Request($args));
 
     // Same call over the "job-like" direct runner path for comparison via MCP
@@ -100,4 +100,20 @@ it('returns denials as in-band text', function () {
     $response = (string) refundAdapter()->handle(new Request(['invoiceId' => 42, 'amount' => 5.0]));
 
     expect($response)->toContain('Not authorized');
+});
+
+it('runs as the explicit principal passed to Agentic::tools, not the ambient guard user', function () {
+    // No ambient guard user set — a queued/background conversation has none.
+    $adapter = collect(iterator_to_array(Agentic::tools(['refund-invoice'], new GenericUser(['id' => 1])), false))->sole();
+
+    $args = ['invoiceId' => 42, 'amount' => 99.5];
+    $knock = (string) $adapter->handle(new Request($args));
+
+    $this->artisan('agentic:approve', ['id' => approvalId($knock)])->assertSuccessful();
+
+    $adapter->handle(new Request($args));
+
+    $row = ActionLog::where('action', 'refund-invoice')->where('surface', 'ai-tool')->where('status', 'ok')->firstOrFail();
+
+    expect($row->user_id)->toBe('1');
 });

@@ -2,6 +2,7 @@
 
 use Gtapps\LaravelAgentic\Approvals\Approval;
 use Gtapps\LaravelAgentic\Audit\ActionLog;
+use Gtapps\LaravelAgentic\Exceptions\RequestedUserNotFound;
 use Gtapps\LaravelAgentic\Surfaces\Jobs\RunAction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Gate;
@@ -36,8 +37,8 @@ it('executes after approval when re-dispatched, rebuilding context from the stor
     } catch (Throwable) {
     }
 
-    $key = Approval::where('status', 'pending')->value('args_hash');
-    $this->artisan('agentic:approve', ['key' => $key])->assertSuccessful();
+    $id = Approval::where('status', 'pending')->value('id');
+    $this->artisan('agentic:approve', ['id' => $id])->assertSuccessful();
 
     RunAction::dispatchSync('refund-invoice', ['invoiceId' => 42, 'amount' => 99.5], 1);
 
@@ -45,4 +46,11 @@ it('executes after approval when re-dispatched, rebuilding context from the stor
 
     expect($row->user_id)->toBe('1')
         ->and($row->action)->toBe('refund-invoice');
+});
+
+it('fails closed instead of running anonymously when the requested user id does not resolve', function () {
+    expect(fn () => RunAction::dispatchSync('refund-invoice', ['invoiceId' => 42, 'amount' => 99.5], 999))
+        ->toThrow(RequestedUserNotFound::class);
+
+    expect(ActionLog::where('action', 'refund-invoice')->exists())->toBeFalse();
 });

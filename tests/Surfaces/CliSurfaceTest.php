@@ -1,6 +1,7 @@
 <?php
 
 use Gtapps\LaravelAgentic\Approvals\Approval;
+use Gtapps\LaravelAgentic\Audit\ActionLog;
 use Gtapps\LaravelAgentic\Facades\Agentic;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\PredicateAction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -36,9 +37,9 @@ it('prints the approve command on knock and executes after approval, impersonati
         ->expectsOutputToContain('php artisan agentic:approve')
         ->assertFailed();
 
-    $key = Approval::where('status', 'pending')->value('args_hash');
+    $id = Approval::where('status', 'pending')->value('id');
 
-    $this->artisan('agentic:approve', ['key' => $key])->assertSuccessful();
+    $this->artisan('agentic:approve', ['id' => $id])->assertSuccessful();
 
     $this->artisan('agentic:action', [
         'name' => 'refund-invoice',
@@ -47,6 +48,18 @@ it('prints the approve command on knock and executes after approval, impersonati
     ])
         ->expectsOutputToContain('"status": "refunded"')
         ->assertSuccessful();
+});
+
+it('fails cleanly instead of running anonymously when --as does not resolve to a user', function () {
+    $this->artisan('agentic:action', [
+        'name' => 'predicate-refund',
+        'json' => '{"amount": 50}',
+        '--as' => 999,
+    ])
+        ->expectsOutputToContain('No user found for --as=999')
+        ->assertFailed();
+
+    expect(ActionLog::where('action', 'predicate-refund')->exists())->toBeFalse();
 });
 
 it('fails cleanly on malformed JSON and unknown actions', function () {
