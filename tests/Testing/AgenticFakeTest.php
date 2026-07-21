@@ -108,3 +108,17 @@ it('assertNotAudited still requires the action to have run', function () {
     expect(fn () => $fake->assertNotAudited('refund-invoice'))
         ->toThrow(AssertionFailedError::class, 'Expected action [refund-invoice] to have run, but it did not.');
 });
+
+it('folds the global audit switch into both audit assertions, like Recorder does', function () {
+    config(['agentic.audit.enabled' => false]);
+
+    $fake = Agentic::fake();
+
+    Agentic::run('refund-invoice', ['invoiceId' => 1, 'amount' => 5.0], fakeCtx());
+
+    // A real run writes no row with the switch off, so the assertions must agree.
+    $fake->assertNotAudited('refund-invoice');
+
+    expect(fn () => $fake->assertAudited('refund-invoice'))
+        ->toThrow(AssertionFailedError::class, 'Action [refund-invoice] is not audited.');
+});

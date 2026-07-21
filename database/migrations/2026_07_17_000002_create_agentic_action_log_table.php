@@ -6,9 +6,14 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    public function getConnection(): ?string
+    {
+        return config('agentic.audit.connection');
+    }
+
     public function up(): void
     {
-        Schema::connection(config('agentic.audit.connection'))->create('agentic_action_log', function (Blueprint $table) {
+        Schema::create('agentic_action_log', function (Blueprint $table) {
             $table->ulid('id')->primary();
             $table->string('action')->index();
             $table->string('surface');
@@ -27,6 +32,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::connection(config('agentic.audit.connection'))->dropIfExists('agentic_action_log');
+        Schema::dropIfExists('agentic_action_log');
     }
 };

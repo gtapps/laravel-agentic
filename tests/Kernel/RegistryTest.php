@@ -78,8 +78,8 @@ it('shows the effective Audit column per action', function () {
         ->expectsTable(
             ['Name', 'Surfaces', 'Read-only', 'Needs approval', 'Audit'],
             [
-                ['audited-read', 'mcp, ai-tool, http, cli, job', 'yes', 'no', 'yes'],
-                ['no-audit', 'mcp, ai-tool, http, cli, job', 'no', 'no', 'no'],
+                ['audited-read', 'mcp, ai-tool, http (off), cli, job', 'yes', 'no', 'yes'],
+                ['no-audit', 'mcp, ai-tool, http (off), cli, job', 'no', 'no', 'no'],
             ]
         )
         ->assertSuccessful();
@@ -96,7 +96,19 @@ it('reports Audit as no for every action when the global switch is off', functio
     $this->artisan('agentic:list')
         ->expectsTable(
             ['Name', 'Surfaces', 'Read-only', 'Needs approval', 'Audit'],
-            [['audited-read', 'mcp, ai-tool, http, cli, job', 'yes', 'no', 'no']]
+            [['audited-read', 'mcp, ai-tool, http (off), cli, job', 'yes', 'no', 'no']]
+        )
+        ->assertSuccessful();
+});
+
+it('drops the http (off) marker once the HTTP surface is enabled', function () {
+    config(['agentic.discovery.paths' => [], 'agentic.http.enabled' => true]);
+    Agentic::register([AuditedReadAction::class]);
+
+    $this->artisan('agentic:list')
+        ->expectsTable(
+            ['Name', 'Surfaces', 'Read-only', 'Needs approval', 'Audit'],
+            [['audited-read', 'mcp, ai-tool, http, cli, job', 'yes', 'no', 'yes']]
         )
         ->assertSuccessful();
 });

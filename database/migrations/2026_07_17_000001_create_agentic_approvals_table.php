@@ -6,9 +6,14 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    public function getConnection(): ?string
+    {
+        return config('agentic.approvals.connection');
+    }
+
     public function up(): void
     {
-        Schema::connection(config('agentic.approvals.connection'))->create('agentic_approvals', function (Blueprint $table) {
+        Schema::create('agentic_approvals', function (Blueprint $table) {
             $table->ulid('id')->primary();
             $table->string('action');
             $table->string('args_hash', 64);
@@ -33,6 +38,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::connection(config('agentic.approvals.connection'))->dropIfExists('agentic_approvals');
+        Schema::dropIfExists('agentic_approvals');
     }
 };

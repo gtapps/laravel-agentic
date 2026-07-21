@@ -24,11 +24,13 @@ class ListCommand extends Command
             return self::SUCCESS;
         }
 
+        $httpMounted = (bool) $config->get('agentic.http.enabled', false);
+
         $this->table(
             ['Name', 'Surfaces', 'Read-only', 'Needs approval', 'Audit'],
             collect($definitions)->map(fn (ActionDefinition $d) => [
                 $d->name,
-                implode(', ', Surface::values($d->surfaces)),
+                $this->surfaces($d, $httpMounted),
                 $d->readOnly ? 'yes' : 'no',
                 is_string($d->needsApproval) ? $d->needsApproval : ($d->needsApproval ? 'yes' : 'no'),
                 $d->isAuditEffective($config) ? 'yes' : 'no',
@@ -36,5 +38,19 @@ class ListCommand extends Command
         );
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Exposure as it actually is, not as declared: the HTTP surface is
+     * opt-in, so an action listing `http` while no routes are mounted would
+     * read as reachable when it isn't.
+     */
+    protected function surfaces(ActionDefinition $definition, bool $httpMounted): string
+    {
+        return collect(Surface::values($definition->surfaces))
+            ->map(fn (string $surface) => $surface === Surface::Http->value && ! $httpMounted
+                ? 'http (off)'
+                : $surface)
+            ->implode(', ');
     }
 }

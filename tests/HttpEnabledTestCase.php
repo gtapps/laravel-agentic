@@ -11,6 +11,8 @@ abstract class HttpEnabledTestCase extends TestCase
 {
     protected function getEnvironmentSetUp($app): void
     {
+        parent::getEnvironmentSetUp($app);
+
         $app['config']->set('agentic.http.enabled', true);
     }
 }

@@ -15,7 +15,7 @@ class Approval extends Model
 
     public function getConnectionName(): ?string
     {
-        return config('agentic.approvals.connection');
+        return $this->connection ?? config('agentic.approvals.connection');
     }
 
     protected function casts(): array

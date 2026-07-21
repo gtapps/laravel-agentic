@@ -12,11 +12,12 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - **`agentic.audit.connection` / `agentic.approvals.connection`** — configure the database connection audit rows and approval rows are written to, independent of the app's default connection (`null` = current behavior).
-- **`agentic:list` shows an `Audit` column** — the effective audit state (per-action policy AND the global `agentic.audit.enabled` switch).
+- **`agentic:list` reports effective exposure, not just declared** — a new `Audit` column folds the per-action policy together with the global `agentic.audit.enabled` switch, and the `Surfaces` column renders `http (off)` while `agentic.http.enabled` is false, so a listed surface always means a reachable one.
 - **`AgenticFake::assertNotAudited()`** — the inverse of `assertAudited()`, for pinning that an action's definition resolves to not-audited.
 
 ### Upgrading
 
+- **If you already published `config/agentic.php`, this fix does not reach you.** The published file still carries `'enabled' => true`, and it wins over the package default — your HTTP surface stays mounted and unauthenticated after upgrading. Open the file and set it to `false`, or add auth middleware, before assuming you are covered.
 - If you rely on the HTTP surface, set `agentic.http.enabled => true` in your published config and ensure auth middleware is configured before re-enabling.
 - The audit boundary and failure semantics are now documented precisely in the README `## Audit` section — audit is synchronous and exception-propagating, written after the handler runs; it is not a transactional fail-closed guarantee.
 

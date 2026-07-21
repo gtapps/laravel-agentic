@@ -9,6 +9,7 @@ use Gtapps\LaravelAgentic\Kernel\Registry;
 use Gtapps\LaravelAgentic\Kernel\Runner;
 use Gtapps\LaravelAgentic\Surfaces\AiTool\ActionToolAdapter;
 use Gtapps\LaravelAgentic\Testing\AgenticFake;
+use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Container\Container;
 
 class AgenticManager
@@ -41,7 +42,7 @@ class AgenticManager
      */
     public function fake(): AgenticFake
     {
-        $fake = new AgenticFake($this->registry);
+        $fake = new AgenticFake($this->registry, $this->container->make(Repository::class));
 
         $this->container->instance(Runner::class, $fake);
 
