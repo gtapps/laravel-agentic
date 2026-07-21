@@ -18,28 +18,19 @@ beforeEach(function () {
     Gate::define('refund-invoice', fn (GenericUser $user, int $invoiceId) => $user->getAuthIdentifier() === 1);
 });
 
-function refundAdapter(): ActionToolAdapter
-{
-    foreach (Agentic::tools(['refund-invoice']) as $tool) {
-        return $tool;
-    }
-
-    throw new RuntimeException('refund-invoice adapter not yielded');
-}
-
 it('yields laravel/ai tool adapters from Agentic::tools with name and description', function () {
     $names = collect(iterator_to_array(Agentic::tools(), false))
         ->map(fn (ActionToolAdapter $tool) => $tool->name());
 
     expect($names)->toContain('refund-invoice');
 
-    $adapter = refundAdapter();
+    $adapter = adapterFor('refund-invoice');
 
     expect((string) $adapter->description())->toBe('Refund an invoice to the original payment method.');
 });
 
 it('exposes the compact schema through laravel/ai\'s schema dialect faithfully', function () {
-    $adapter = refundAdapter();
+    $adapter = adapterFor('refund-invoice');
 
     // Assemble exactly like laravel/ai's gateways do.
     $schema = (new ObjectSchema($adapter->schema(new JsonSchemaTypeFactory)))->toSchema();
@@ -54,7 +45,7 @@ it('exposes the compact schema through laravel/ai\'s schema dialect faithfully',
 it('executes through the same pipeline with the running agent\'s user, auditing surface ai-tool', function () {
     auth()->setUser(new GenericUser(['id' => 1]));
 
-    $adapter = refundAdapter();
+    $adapter = adapterFor('refund-invoice');
     $args = ['invoiceId' => 42, 'amount' => 99.5];
 
     // Knock arrives as in-band text the model can act on.
@@ -76,7 +67,7 @@ it('produces audit rows identical to MCP apart from surface', function () {
 
     config(['agentic.approvals.ttl' => 600]);
 
-    $adapter = refundAdapter();
+    $adapter = adapterFor('refund-invoice');
     $args = ['invoiceId' => 7, 'amount' => 10.0];
 
     $knock = (string) $adapter->handle(new Request($args));
@@ -97,7 +88,7 @@ it('produces audit rows identical to MCP apart from surface', function () {
 it('returns denials as in-band text', function () {
     auth()->setUser(new GenericUser(['id' => 2]));
 
-    $response = (string) refundAdapter()->handle(new Request(['invoiceId' => 42, 'amount' => 5.0]));
+    $response = (string) adapterFor('refund-invoice')->handle(new Request(['invoiceId' => 42, 'amount' => 5.0]));
 
     expect($response)->toContain('Not authorized');
 });
