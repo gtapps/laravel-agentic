@@ -15,6 +15,7 @@ final class Context implements ActionContext
         protected Surface $caller,
         protected ?Authenticatable $user = null,
         protected ?string $requestId = null,
+        protected ?string $idempotencyKey = null,
     ) {}
 
     public function user(): ?Authenticatable
@@ -30,5 +31,10 @@ final class Context implements ActionContext
     public function requestId(): ?string
     {
         return $this->requestId;
+    }
+
+    public function idempotencyKey(): ?string
+    {
+        return $this->idempotencyKey;
     }
 }

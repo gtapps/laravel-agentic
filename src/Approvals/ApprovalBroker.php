@@ -34,12 +34,7 @@ class ApprovalBroker
     {
         $this->expireStale($key);
 
-        $approval = Approval::query()
-            ->where('args_hash', $key)
-            ->where('status', 'granted')
-            ->where('definition_hash', $definition->definitionHash)
-            ->tap(fn (Builder $q) => $this->wherePrincipal($q, $context))
-            ->first();
+        $approval = $this->findGranted($definition, $key, $context);
 
         if ($approval === null) {
             return null;
@@ -59,6 +54,37 @@ class ApprovalBroker
         return $approval
             ->forceFill(['status' => 'consumed', 'consumed_at' => $consumedAt])
             ->syncOriginal();
+    }
+
+    /**
+     * The non-consuming twin of check(): same predicate, but the grant is left
+     * intact (it still expires stale rows, as every read here does). Callers
+     * that need to know whether a grant exists WITHOUT burning it use this,
+     * because a single-use grant must be spent by the gate on the execution
+     * path and nowhere else.
+     */
+    public function peek(ActionDefinition $definition, string $key, ActionContext $context): ?Approval
+    {
+        $this->expireStale($key);
+
+        return $this->findGranted($definition, $key, $context);
+    }
+
+    /**
+     * The one predicate for "a grant this caller may use", shared so the
+     * consuming and non-consuming readers can never drift apart — a filter
+     * added to one and forgotten on the other would let peek() report a grant
+     * the gate would refuse, or worse, the reverse.
+     */
+    protected function findGranted(ActionDefinition $definition, string $key, ActionContext $context): ?Approval
+    {
+        return Approval::query()
+            ->where('args_hash', $key)
+            ->where('status', 'granted')
+            ->where('definition_hash', $definition->definitionHash)
+            ->tap(fn (Builder $q) => $this->wherePrincipal($q, $context))
+            ->tap(fn (Builder $q) => $this->whereInvocation($q, $context))
+            ->first();
     }
 
     /**
@@ -85,10 +111,27 @@ class ApprovalBroker
         ActionContext $context,
     ): Approval {
         $userId = $context->user()?->getAuthIdentifier();
-        $activeKey = self::activeKey($key, $userId);
+        $invocationKey = self::invocationKey($context);
+        $activeKey = self::activeKey($key, $userId, $invocationKey);
 
-        // active_key already IS the (key, principal) identity while pending,
-        // so it doubles as the idempotency lookup here.
+        // One tool call gets exactly one approval, for its whole life. settle()
+        // clears active_key, so the pending lookup below stops matching the
+        // moment a row is granted or denied — a caller that asks again would
+        // slip past the unique index and mint a SECOND pending row for consent
+        // a human already gave or refused. ApprovalGate happens to consume
+        // before it ever re-asks, but callers outside the gate (mapping a
+        // paused run's decisions) have no such ordering, so the guard belongs
+        // here rather than in their call order.
+        if ($invocationKey !== null) {
+            $existing = Approval::query()->where('invocation_key', $invocationKey)->orderByDesc('id')->first();
+
+            if ($existing !== null) {
+                return $existing;
+            }
+        }
+
+        // active_key already IS the (key, principal, invocation) identity while
+        // pending, so it doubles as the idempotency lookup here.
         $existing = Approval::query()->where('active_key', $activeKey)->where('status', 'pending')->first();
 
         if ($existing !== null) {
@@ -107,6 +150,7 @@ class ApprovalBroker
             'args_hash' => $key,
             'args_redacted' => $argsRedacted,
             'status' => 'pending',
+            'invocation_key' => $invocationKey,
             'token_hash' => hash('sha256', $token),
             'requested_user_id' => $userId,
             'requested_surface' => $context->caller()->value,
@@ -202,9 +246,56 @@ class ApprovalBroker
             ->update(['status' => 'expired', 'active_key' => null]);
     }
 
-    protected static function activeKey(string $key, string|int|null $userId): string
+    /**
+     * The pending-uniqueness identity. Callers that carry an invocation (a
+     * laravel/ai tool call) get one pending row PER invocation; everyone else
+     * keeps the historical one-row-per-(args, principal) behaviour, and their
+     * hash is byte-identical to what it was before invocations existed.
+     */
+    protected static function activeKey(string $key, string|int|null $userId, ?string $invocationKey = null): string
     {
-        return hash('sha256', $key.'|'.($userId ?? ''));
+        $identity = $key.'|'.($userId ?? '');
+
+        if ($invocationKey !== null) {
+            $identity .= '|'.$invocationKey;
+        }
+
+        return hash('sha256', $identity);
+    }
+
+    /**
+     * Correlation identity for one native tool call. Null for surfaces that
+     * have no stable per-invocation id, which is what keeps their queries
+     * (and their semantics) exactly as they were.
+     */
+    public static function invocationKey(ActionContext $context): ?string
+    {
+        $toolCallId = $context->idempotencyKey();
+
+        if ($toolCallId === null) {
+            return null;
+        }
+
+        return hash('sha256', implode('|', [
+            $context->caller()->value,
+            (string) ($context->user()?->getAuthIdentifier() ?? ''),
+            $toolCallId,
+        ]));
+    }
+
+    /**
+     * A grant is only usable by the invocation it was issued for. Rows with no
+     * invocation stay usable by anyone matching the args and principal, so a
+     * knock raised on one surface can still be approved and consumed on
+     * another — the cross-surface promise the broker exists to keep.
+     */
+    protected function whereInvocation(Builder $query, ActionContext $context): void
+    {
+        $invocationKey = self::invocationKey($context);
+
+        $invocationKey === null
+            ? $query->whereNull('invocation_key')
+            : $query->where(fn (Builder $q) => $q->whereNull('invocation_key')->orWhere('invocation_key', $invocationKey));
     }
 
     /**
