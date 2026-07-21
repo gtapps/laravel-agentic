@@ -36,8 +36,8 @@ it('executes after approval when re-dispatched, rebuilding context from the stor
     } catch (Throwable) {
     }
 
-    $key = Approval::where('status', 'pending')->value('args_hash');
-    $this->artisan('agentic:approve', ['key' => $key])->assertSuccessful();
+    $id = Approval::where('status', 'pending')->value('id');
+    $this->artisan('agentic:approve', ['id' => $id])->assertSuccessful();
 
     RunAction::dispatchSync('refund-invoice', ['invoiceId' => 42, 'amount' => 99.5], 1);
 

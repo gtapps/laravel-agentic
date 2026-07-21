@@ -42,7 +42,7 @@ class ActionCommand extends Command
             $result = $agentic->run($this->argument('name'), $args, $context);
         } catch (ApprovalRequiredException $e) {
             $this->warn($e->getMessage());
-            $this->line("Approve with: php artisan agentic:approve {$e->key}");
+            $this->line("Approve with: php artisan agentic:approve {$e->approvalId}");
 
             return self::FAILURE;
         } catch (ActionNotFound|ActionDenied $e) {

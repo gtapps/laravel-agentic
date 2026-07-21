@@ -8,6 +8,7 @@ use Gtapps\LaravelAgentic\Kernel\ActionResult;
 use Gtapps\LaravelAgentic\Kernel\Registry;
 use Gtapps\LaravelAgentic\Kernel\Runner;
 use Illuminate\Contracts\Config\Repository;
+use Illuminate\Support\Str;
 use PHPUnit\Framework\Assert;
 
 /**
@@ -58,7 +59,7 @@ class AgenticFake extends Runner
         if (in_array($name, $this->requireApproval, true)) {
             $this->approvalsRequested[] = $name;
 
-            throw new ApprovalRequiredException($name, hash('sha256', $name."\0".json_encode($rawArgs)));
+            throw new ApprovalRequiredException($name, hash('sha256', $name."\0".json_encode($rawArgs)), (string) Str::ulid());
         }
 
         $this->ran[] = ['name' => $name, 'args' => $rawArgs, 'context' => $context];

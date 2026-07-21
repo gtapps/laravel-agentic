@@ -37,6 +37,13 @@ function approvalKey(string $text): string
     return $matches[1];
 }
 
+function approvalId(string $text): string
+{
+    preg_match('/agentic:approve (\w{26})/', $text, $matches);
+
+    return $matches[1];
+}
+
 function useUsersTable(): void
 {
     config(['auth.providers.users.model' => User::class]);

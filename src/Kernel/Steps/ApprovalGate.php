@@ -52,7 +52,7 @@ class ApprovalGate
 
         $call->approvalId = $approval->id;
 
-        throw new ApprovalRequiredException($definition->name, $key);
+        throw new ApprovalRequiredException($definition->name, $key, $approval->id);
     }
 
     /**

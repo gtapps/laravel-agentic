@@ -41,9 +41,9 @@ it('runs the same action definition identically through MCP, ai-tool, HTTP, CLI,
     $results = [];
 
     $approvePending = function (): void {
-        $key = Approval::where('status', 'pending')->value('args_hash');
-        expect($key)->not->toBeNull();
-        $this->artisan('agentic:approve', ['key' => $key])->assertSuccessful();
+        $id = Approval::where('status', 'pending')->value('id');
+        expect($id)->not->toBeNull();
+        $this->artisan('agentic:approve', ['id' => $id])->assertSuccessful();
     };
 
     // ── MCP ────────────────────────────────────────────────────────────

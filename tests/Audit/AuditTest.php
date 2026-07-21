@@ -37,14 +37,16 @@ it('writes ok rows for successful non-readOnly runs, with redaction and forensic
     Event::fake([ActionExecuted::class]);
 
     $key = null;
+    $approvalId = null;
 
     try {
         Agentic::run('refund-invoice', ['invoiceId' => 7, 'amount' => 10.0], auditCtx());
     } catch (ApprovalRequiredException $e) {
         $key = $e->key;
+        $approvalId = $e->approvalId;
     }
 
-    $this->artisan('agentic:approve', ['key' => $key])->assertSuccessful();
+    $this->artisan('agentic:approve', ['id' => $approvalId])->assertSuccessful();
 
     Agentic::run('refund-invoice', ['invoiceId' => 7, 'amount' => 10.0], auditCtx());
 

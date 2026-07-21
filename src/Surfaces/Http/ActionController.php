@@ -48,6 +48,7 @@ class ActionController
             return new JsonResponse([
                 'status' => 'approval_required',
                 'key' => $e->key,
+                'approvalId' => $e->approvalId,
                 'retry' => 'identical call after approval',
                 'message' => $e->getMessage(),
             ], 409);

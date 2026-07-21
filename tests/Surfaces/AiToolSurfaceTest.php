@@ -62,7 +62,7 @@ it('executes through the same pipeline with the running agent\'s user, auditing 
 
     expect($knock)->toContain("Approval required for action 'refund-invoice'");
 
-    $this->artisan('agentic:approve', ['key' => approvalKey($knock)])->assertSuccessful();
+    $this->artisan('agentic:approve', ['id' => approvalId($knock)])->assertSuccessful();
 
     $result = json_decode((string) $adapter->handle(new Request($args)), true);
 
@@ -81,7 +81,7 @@ it('produces audit rows identical to MCP apart from surface', function () {
 
     $knock = (string) $adapter->handle(new Request($args));
     $key = approvalKey($knock);
-    $this->artisan('agentic:approve', ['key' => $key])->assertSuccessful();
+    $this->artisan('agentic:approve', ['id' => approvalId($knock)])->assertSuccessful();
     $adapter->handle(new Request($args));
 
     // Same call over the "job-like" direct runner path for comparison via MCP

@@ -14,10 +14,11 @@ class ApprovalRequiredException extends RuntimeException
     public function __construct(
         public readonly string $actionName,
         public readonly string $key,
+        public readonly string $approvalId,
     ) {
         parent::__construct(
             "Approval required for action '{$actionName}'. Pending under key {$key}. "
-            ."Ask a human to run: php artisan agentic:approve {$key}. "
+            ."Ask a human to run: php artisan agentic:approve {$approvalId}. "
             .'Then retry this exact call unchanged.'
         );
     }

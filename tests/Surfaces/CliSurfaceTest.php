@@ -36,9 +36,9 @@ it('prints the approve command on knock and executes after approval, impersonati
         ->expectsOutputToContain('php artisan agentic:approve')
         ->assertFailed();
 
-    $key = Approval::where('status', 'pending')->value('args_hash');
+    $id = Approval::where('status', 'pending')->value('id');
 
-    $this->artisan('agentic:approve', ['key' => $key])->assertSuccessful();
+    $this->artisan('agentic:approve', ['id' => $id])->assertSuccessful();
 
     $this->artisan('agentic:action', [
         'name' => 'refund-invoice',

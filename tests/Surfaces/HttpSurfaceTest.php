@@ -30,7 +30,7 @@ it('runs the approval flow over HTTP: 409 knock with key, approve, identical ret
         ->assertJsonPath('status', 'approval_required')
         ->assertJsonPath('retry', 'identical call after approval');
 
-    $this->artisan('agentic:approve', ['key' => $knock->json('key')])->assertSuccessful();
+    $this->artisan('agentic:approve', ['id' => $knock->json('approvalId')])->assertSuccessful();
 
     $this->actingAs($user)->postJson('/agentic/actions/refund-invoice', $args)
         ->assertOk()
