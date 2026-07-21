@@ -53,7 +53,8 @@ it('writes ok rows for successful non-readOnly runs, with redaction and forensic
     expect($rows)->toHaveCount(2)
         ->and($rows[0]->status)->toBe('approval_required')
         ->and($rows[0]->approval_id)->not->toBeNull()
-        ->and($rows[1]->status)->toBe('ok');
+        ->and($rows[1]->status)->toBe('ok')
+        ->and($rows[1]->approval_id)->toBe($rows[0]->approval_id);
 
     $ok = $rows[1];
 
