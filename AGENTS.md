@@ -1,3 +1,159 @@
+# AGENTS.md
+
+> Generated from `CLAUDE.md` and revised for Codex-compatible agent usage.
+> This file should preserve repository workflow guidance, not Claude-only tooling instructions.
+
+## Package Overview
+
+`gtapps/laravel-agentic` is a Laravel **package** (not an app): an agent-native
+action layer. You define an action once, and it becomes callable — with
+identical validation, authorization, approval, and audit — across five
+surfaces: MCP, laravel/ai tools, HTTP, CLI, and queued jobs. Built on
+`laravel/mcp`, `laravel/ai`, and `spatie/laravel-data`.
+
+Namespace is `Gtapps\LaravelAgentic` (PSR-4 root `src/`). Read `README.md`
+for the user-facing story and this file for the package architecture and
+development conventions.
+
+## Commands
+
+Tests run via Orchestra Testbench on any PHP ≥ 8.3 (composer floor); the suite
+is green on both 8.4 and the local default 8.5, so plain `php` works:
+
+```bash
+php vendor/bin/pest                    # full suite (~120 tests)
+php vendor/bin/pest tests/Kernel/RunnerTest.php   # one file
+php vendor/bin/pest --filter "knocks"  # by name substring
+vendor/bin/pint                        # format (composer format)
+```
+
+There is no build step. `composer test` / `composer format` are the aliases.
+
+## Architecture
+
+### The Runner is the one chokepoint
+
+Every surface funnels into `Runner::run($name, $rawArgs, $context)`
+(`src/Kernel/Runner.php`). All guarantees live inside a **fixed, ordered**
+pipeline of steps (`src/Kernel/Steps/`), and the order is not configurable:
+
+1. `Resolve` — look up the `ActionDefinition` from the Registry
+2. `ValidateAndHydrate` — validate raw args against the full input schema, hydrate the DTO
+3. `Authorize` — the action's `authorize()`; standing authz, always first
+4. `ApprovalGate` — per-invocation human consent (only for non-`readOnly` + `needsApproval`)
+5. `Execute` — call the handler's `handle()`
+6. `NormalizeResult` — apply `outputSchema` / `Mismatch` policy
+
+The Runner wraps the whole pipeline so denials, approval knocks, and failures
+are audited alongside successes. Adding cross-cutting behavior means adding or
+editing a Step — never bypassing the pipeline from a surface.
+
+**Approval is consent, never escalation:** `ApprovalGate` runs *after*
+`Authorize`, so an approval can never override a policy denial. The grant is
+consumed *before* `Execute`, so a handler failure after consume makes the
+retry knock again rather than double-execute.
+
+### Definitions, registry, caching
+
+An action is a class with `#[AgentAction(...)]` (`src/Attributes/`) and a
+`handle()` method. The input DTO is inferred as the first `handle()` parameter
+typed as a `spatie/laravel-data` `Data` subclass.
+
+`Registry` (`src/Kernel/Registry.php`) builds an immutable, serializable
+`ActionDefinition` per action — attribute metadata + compiled JSON Schema +
+a `definitionHash`. It resolves actions from two sources: package-registered
+classes (`Agentic::register([...])`) first, then classes scanned from
+`agentic.discovery.paths` (default `app/Actions`), with **scanned overriding
+registered by name**. A broken action logs a warning and is skipped — it
+never fatals boot (file class names are lexed via tokens without executing
+the file). `agentic:cache` serializes definitions to
+`bootstrap/cache/agentic.php` (like `route:cache`); `agentic:clear` removes it.
+
+### Schema spine
+
+Input DTOs compile once to JSON Schema (draft 2020-12) via
+`SchemaCompiler` → `SpatieDataCompiler` (`src/Schema/`) and the result is
+reused for the MCP tool schema, ai-tool schema, HTTP validation, and CLI
+parsing — so schema dialects can't drift between surfaces. An optional
+compact `agentInputSchema` is what models see (token economy) while the full
+schema still validates; `Registry::lintCoherence()` enforces at registration
+that every field the full schema *requires* exists in the compact one.
+
+### Context is built explicitly, never ambient
+
+`ContextFactory::make(Surface $caller, ?Authenticatable $user, ...)`
+(`src/Kernel/`) is the only place an `ActionContext` is built. Each surface
+passes the identity **it** verified (token user, `--as` user, job's stored
+user id). The kernel never reads session/cookie state — this is the deliberate
+token/cookie-confusion defense. `Surface` (`src/Enums/`) is one enum serving
+both "surfaces an action is exposed on" and "who is calling now".
+
+### Surfaces (`src/Surfaces/`)
+
+Each is a thin adapter that verifies identity, builds a context, and calls the
+Runner — no business logic:
+
+- **Mcp** — `AgenticServer` (mount in `routes/ai.php` via `Mcp::web`); tiered
+  exposure via `agentic.mcp.tiers` (allowlist for unauthenticated) and
+  `exclude` (hard denylist beating everything), gating both `tools/list` and
+  `tools/call`.
+- **AiTool** — `Agentic::tools()` yields `ActionToolAdapter`s for any laravel/ai agent's `tools()` iterable.
+- **Http** — opt-in `ActionController` (`routes/agentic.php`, `agentic.http.enabled` defaults to `false`); POST for all, GET allowed for `readOnly`.
+- **Cli** — `agentic:action` plus `agentic:list|cache|clear|approve|deny`.
+- **Jobs** — `RunAction` dispatchable.
+
+`tests/ParityTest.php` asserts all five surfaces produce identical behavior —
+keep it green when touching any surface.
+
+**Surfaces are glue — delegate, never overlap the frameworks.** They implement
+the frameworks' contracts (`Laravel\Ai\Contracts\Tool` / `Approvable`,
+laravel/mcp's server) and never wrap, fork, or reimplement them. Before adding
+anything to a surface, check the framework doesn't already own it. Delegate:
+the ai agent loop and provider gateways, conversation memory, laravel/ai's
+tool-call / approval / decision data types, laravel/mcp's transport and the
+`tools/list`–`tools/call` handshake, and each schema dialect. This package
+owns only what lives in neither dependency — the reason it exists: the Runner
+chokepoint and its ordered pipeline, the identity discipline (`ContextFactory`
+never reading ambient state), durable single-use cross-surface audited
+approvals, schema compiled once and shared, and the registry / discovery /
+cache. The test for new surface code: if a framework already does it — or
+plausibly will next release — call theirs. The value added is always the funnel
+into the Runner, never a second implementation.
+
+### Approvals & audit (`src/Approvals/`, `src/Audit/`)
+
+Grants are keyed on `sha256(action + canonicalized args)` (arg order never
+matters), bound to the requesting principal, single-use, and expire to **deny**
+(`agentic.approvals.ttl`). A throwing `needsApproval` predicate fails **closed**.
+`ApprovalBroker` mediates; wire your own channel via the `ApprovalRequested`
+event (v1 ships no HTTP grant endpoint by design).
+
+`Recorder` writes an `agentic_action_log` row for every audited execution
+(success, failure, denial, or knock): non-`readOnly` actions by default,
+`readOnly` ones only when they opt in with `#[AgentAction(audit: true)]`.
+`Redactor` applies
+`agentic.redact` dot-path globs to **both** audit rows and approval payloads,
+so secrets never land in either. `ActionLog` and `Approval` each resolve
+their own connection via `agentic.audit.connection` / `agentic.approvals.connection`
+(`getConnectionName()`; both default `null` = the app's default connection),
+and the migrations honor the same keys.
+
+### Testing your own actions
+
+`Agentic::fake()` (`src/Testing/AgenticFake.php`) swaps the Runner binding in
+the container for a recorder: subsequent runs on any surface are captured, not
+executed. Assertions: `assertRan`, `assertNothingRan`, `assertAudited`,
+`assertApprovalRequested`, `requireApprovalFor(...)`.
+
+## Test conventions
+
+Tests use Pest + Testbench. `getPackageProviders` (`tests/TestCase.php`)
+registers the Data, MCP, and Agentic providers. The `workbench/` app provides
+real fixture actions (`workbench/app/Actions/`) discovered via a workbench
+provider; `tests/Fixtures/` holds narrower per-test action and schema fixtures.
+Helpers in `tests/Pest.php`: `approvalKey($text)` extracts a knock key from
+agent-facing text; `useUsersTable()` sets up an auth model + table.
+
 <laravel-boost-guidelines>
 === foundation rules ===
 

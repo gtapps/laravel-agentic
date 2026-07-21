@@ -20,7 +20,7 @@ Tests run via Orchestra Testbench on any PHP ≥ 8.3 (composer floor); the suite
 is green on both 8.4 and the local default 8.5, so plain `php` works:
 
 ```bash
-php vendor/bin/pest                    # full suite (~100 tests)
+php vendor/bin/pest                    # full suite (~120 tests)
 php vendor/bin/pest tests/Kernel/RunnerTest.php   # one file
 php vendor/bin/pest --filter "knocks"  # by name substring
 vendor/bin/pint                        # format (composer format)
@@ -103,6 +103,21 @@ Runner — no business logic:
 
 `tests/ParityTest.php` asserts all five surfaces produce identical behavior —
 keep it green when touching any surface.
+
+**Surfaces are glue — delegate, never overlap the frameworks.** They implement
+the frameworks' contracts (`Laravel\Ai\Contracts\Tool` / `Approvable`,
+laravel/mcp's server) and never wrap, fork, or reimplement them. Before adding
+anything to a surface, check the framework doesn't already own it. Delegate:
+the ai agent loop and provider gateways, conversation memory, laravel/ai's
+tool-call / approval / decision data types, laravel/mcp's transport and the
+`tools/list`–`tools/call` handshake, and each schema dialect. This package
+owns only what lives in neither dependency — the reason it exists: the Runner
+chokepoint and its ordered pipeline, the identity discipline (`ContextFactory`
+never reading ambient state), durable single-use cross-surface audited
+approvals, schema compiled once and shared, and the registry / discovery /
+cache. The test for new surface code: if a framework already does it — or
+plausibly will next release — call theirs. The value added is always the funnel
+into the Runner, never a second implementation.
 
 ### Approvals & audit (`src/Approvals/`, `src/Audit/`)
 
