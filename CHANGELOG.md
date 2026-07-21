@@ -23,7 +23,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Upgrading
 
-- **Run `php artisan migrate`.** This release adds `active_key` to `agentic_approvals` via a new migration; knocks fail until the column exists. Pending approvals created before the upgrade carry a null `active_key` — they stay decidable by id and expire normally.
+- **The `agentic_approvals` create migration gained an `active_key` column.** It is edited in place rather than added as a follow-up migration — if you already ran the 0.0.2 migrations, roll the table back and re-migrate.
 - Any code calling `ApprovalBroker::decide()` / `decideViaArtisan()`, or wiring an approval channel off the `ApprovalRequested` event, must pass `$approval->id` where it previously passed the args hash. Passing a key now finds nothing and returns `false`.
 - **If you already published `config/agentic.php`, this fix does not reach you.** The published file still carries `'enabled' => true`, and it wins over the package default — your HTTP surface stays mounted and unauthenticated after upgrading. Open the file and set it to `false`, or add auth middleware, before assuming you are covered.
 - If you rely on the HTTP surface, set `agentic.http.enabled => true` in your published config and ensure auth middleware is configured before re-enabling.
