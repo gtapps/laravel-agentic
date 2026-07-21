@@ -95,7 +95,7 @@ it('round-trips the approval flow over MCP: in-band knock, approve, identical re
     expect($text)->toContain("Approval required for action 'refund-invoice'")
         ->toContain('retry this exact call unchanged');
 
-    $this->artisan('agentic:approve', ['key' => approvalKey($text)])->assertSuccessful();
+    $this->artisan('agentic:approve', ['id' => approvalId($text)])->assertSuccessful();
 
     $retry = mcpCall('tools/call', $args, $user);
 

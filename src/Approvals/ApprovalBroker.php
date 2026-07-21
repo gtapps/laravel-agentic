@@ -56,7 +56,11 @@ class ApprovalBroker
     /**
      * Idempotent per (key, principal) while pending. Returns the pending
      * approval; fires ApprovalRequested with the plaintext capability token
-     * (stored only as a sha256 hash) on first creation.
+     * (stored only as a sha256 hash) on first creation. The decision
+     * identity a human acts on is the approval's ULID, never this key —
+     * `active_key` (unique, non-null only while pending) is what actually
+     * enforces "one pending row per (key, principal)" against a concurrent
+     * duplicate create.
      */
     public function requestApproval(
         ActionDefinition $definition,
@@ -64,11 +68,12 @@ class ApprovalBroker
         array $argsRedacted,
         ActionContext $context,
     ): Approval {
-        $existing = Approval::query()
-            ->where('args_hash', $key)
-            ->where('status', 'pending')
-            ->tap(fn (Builder $q) => $this->wherePrincipal($q, $context))
-            ->first();
+        $userId = $context->user()?->getAuthIdentifier();
+        $activeKey = self::activeKey($key, $userId);
+
+        // active_key already IS the (key, principal) identity while pending,
+        // so it doubles as the idempotency lookup here.
+        $existing = Approval::query()->where('active_key', $activeKey)->where('status', 'pending')->first();
 
         if ($existing !== null) {
             return $existing;
@@ -76,19 +81,26 @@ class ApprovalBroker
 
         $token = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
 
-        $approval = Approval::create([
+        // createOrFirst() wraps the insert in a savepoint only when already
+        // nested in a transaction (so a failed insert can't poison an
+        // ambient PostgreSQL transaction), and on a unique active_key
+        // collision from a concurrent identical knock, refetches the
+        // pending row that won instead of failing the call.
+        $approval = Approval::query()->createOrFirst(['active_key' => $activeKey], [
             'action' => $definition->name,
             'args_hash' => $key,
             'args_redacted' => $argsRedacted,
             'status' => 'pending',
             'token_hash' => hash('sha256', $token),
-            'requested_user_id' => $context->user()?->getAuthIdentifier(),
+            'requested_user_id' => $userId,
             'requested_surface' => $context->caller()->value,
             'definition_hash' => $definition->definitionHash,
             'expires_at' => now()->addSeconds((int) $this->config->get('agentic.approvals.ttl', 600)),
         ]);
 
-        event(new ApprovalRequested($approval, $token));
+        if ($approval->wasRecentlyCreated) {
+            event(new ApprovalRequested($approval, $token));
+        }
 
         return $approval;
     }
@@ -98,59 +110,72 @@ class ApprovalBroker
      * compare). Artisan uses decideViaArtisan() instead because the local
      * process boundary is already trusted.
      */
-    public function decide(string $key, string $token, bool $approve, ?string $decidedBy = null): bool
+    public function decide(string $id, string $token, bool $approve, ?string $decidedBy = null): bool
     {
-        $approval = $this->findPending($key);
+        $approval = $this->findPendingById($id);
 
         if ($approval === null || ! hash_equals($approval->token_hash, hash('sha256', $token))) {
             return false;
         }
 
-        $this->settle($approval, $approve, $decidedBy);
-
-        return true;
+        return $this->settle($approval, $approve, $decidedBy);
     }
 
     /**
      * Token-free grant/deny for the agentic:approve / agentic:deny commands.
      * Anyone with artisan has tinker; the process boundary is the trust line.
      */
-    public function decideViaArtisan(string $key, bool $approve): bool
+    public function decideViaArtisan(string $id, bool $approve): bool
     {
-        $approval = $this->findPending($key);
+        $approval = $this->findPendingById($id);
 
         if ($approval === null) {
             return false;
         }
 
-        $this->settle($approval, $approve, 'artisan');
+        return $this->settle($approval, $approve, 'artisan');
+    }
+
+    protected function findPendingById(string $id): ?Approval
+    {
+        $approval = Approval::find($id);
+
+        return $approval !== null && $approval->status === 'pending' ? $approval : null;
+    }
+
+    /**
+     * Single conditional UPDATE guarded on id + status + expiry — no
+     * read-then-write race with a concurrent settle/expiry on the same row.
+     * Returns false (no event fired) if another decision or expiry won.
+     */
+    protected function settle(Approval $approval, bool $approve, ?string $decidedBy): bool
+    {
+        $affected = Approval::query()
+            ->where('id', $approval->id)
+            ->where('status', 'pending')
+            ->where('expires_at', '>=', now())
+            ->update([
+                'status' => $approve ? 'granted' : 'denied',
+                'active_key' => null,
+                'decided_by' => $decidedBy,
+                'decided_at' => now(),
+            ]);
+
+        if ($affected === 0) {
+            return false;
+        }
+
+        $approval->refresh();
+
+        event($approve ? new ApprovalGranted($approval) : new ApprovalDenied($approval));
 
         return true;
     }
 
-    protected function findPending(string $key): ?Approval
-    {
-        $this->expireStale($key);
-
-        return Approval::query()
-            ->where('args_hash', $key)
-            ->where('status', 'pending')
-            ->first();
-    }
-
-    protected function settle(Approval $approval, bool $approve, ?string $decidedBy): void
-    {
-        $approval->update([
-            'status' => $approve ? 'granted' : 'denied',
-            'decided_by' => $decidedBy,
-            'decided_at' => now(),
-        ]);
-
-        event($approve ? new ApprovalGranted($approval) : new ApprovalDenied($approval));
-    }
-
     /**
-     * Expiry → deny, enforced lazily — no scheduler in v1.
+     * Expiry → deny, enforced lazily — no scheduler in v1. Clears
+     * active_key so an expired pending row never blocks a fresh knock for
+     * the same (key, principal).
      */
     protected function expireStale(string $key): void
     {
@@ -158,7 +183,12 @@ class ApprovalBroker
             ->where('args_hash', $key)
             ->whereIn('status', ['pending', 'granted'])
             ->where('expires_at', '<', now())
-            ->update(['status' => 'expired']);
+            ->update(['status' => 'expired', 'active_key' => null]);
+    }
+
+    protected static function activeKey(string $key, string|int|null $userId): string
+    {
+        return hash('sha256', $key.'|'.($userId ?? ''));
     }
 
     /**

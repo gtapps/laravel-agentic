@@ -48,18 +48,20 @@ function knockKey(callable $call): string
 }
 
 it('walks the full lifecycle: knock → approve → identical retry executes → grant consumed → re-knock', function () {
-    // Knock: agent-legible message carries the key and the retry protocol.
+    // Knock: agent-legible message carries the key, the id, and the retry protocol.
     $key = null;
+    $approvalId = null;
 
     try {
         runRefund();
         $this->fail('Expected ApprovalRequiredException');
     } catch (ApprovalRequiredException $e) {
         $key = $e->key;
+        $approvalId = $e->approvalId;
         expect($e->getMessage())
             ->toContain("Approval required for action 'refund-invoice'")
             ->toContain($key)
-            ->toContain("agentic:approve {$key}")
+            ->toContain("agentic:approve {$approvalId}")
             ->toContain('retry this exact call unchanged');
     }
 
@@ -73,7 +75,7 @@ it('walks the full lifecycle: knock → approve → identical retry executes →
 
     expect(Approval::where('args_hash', $key)->count())->toBe(1);
 
-    $this->artisan('agentic:approve', ['key' => $key])->assertSuccessful();
+    $this->artisan('agentic:approve', ['id' => $approvalId])->assertSuccessful();
 
     // Identical retry executes; the grant is consumed.
     $result = runRefund();
@@ -98,8 +100,9 @@ it('keys approvals on canonical args: different args knock separately, key order
 });
 
 it('binds grants to the requesting principal: another user with identical args knocks separately', function () {
-    $key = knockKey(fn () => runRefund(userId: 1));
-    $this->artisan('agentic:approve', ['key' => $key])->assertSuccessful();
+    $approval = knockApproval(fn () => runRefund(userId: 1));
+    $key = $approval->args_hash;
+    $this->artisan('agentic:approve', ['id' => $approval->id])->assertSuccessful();
 
     // User 2, identical args: same key, but no grant for them — they knock.
     expect(fn () => runRefund(userId: 2))->toThrow(ApprovalRequiredException::class);
@@ -112,12 +115,13 @@ it('binds grants to the requesting principal: another user with identical args k
 });
 
 it('expires unanswered knocks to deny', function () {
-    $key = knockKey(fn () => runRefund());
+    $approval = knockApproval(fn () => runRefund());
+    $key = $approval->args_hash;
 
     $this->travel(11)->minutes();
 
     // Approving after expiry finds nothing.
-    $this->artisan('agentic:approve', ['key' => $key])->assertFailed();
+    $this->artisan('agentic:approve', ['id' => $approval->id])->assertFailed();
 
     // Retry re-knocks with a fresh pending row.
     expect(fn () => runRefund())->toThrow(ApprovalRequiredException::class);
@@ -127,14 +131,14 @@ it('expires unanswered knocks to deny', function () {
 });
 
 it('expires unconsumed grants to deny', function () {
-    $key = knockKey(fn () => runRefund());
-    $this->artisan('agentic:approve', ['key' => $key])->assertSuccessful();
+    $approval = knockApproval(fn () => runRefund());
+    $this->artisan('agentic:approve', ['id' => $approval->id])->assertSuccessful();
 
     $this->travel(11)->minutes();
 
     expect(fn () => runRefund())->toThrow(ApprovalRequiredException::class);
 
-    expect(Approval::where('args_hash', $key)->where('status', 'expired')->count())->toBe(1);
+    expect(Approval::where('args_hash', $approval->args_hash)->where('status', 'expired')->count())->toBe(1);
 });
 
 it('fails closed: a throwing predicate means approval required', function () {
@@ -152,7 +156,7 @@ it('lets predicate actions skip approval when the predicate says no', function (
 it('verifies the capability token on programmatic decide, timing-safe', function () {
     Event::fake([ApprovalRequested::class]);
 
-    $key = knockKey(fn () => runRefund());
+    $approval = knockApproval(fn () => runRefund());
 
     $token = null;
     Event::assertDispatched(ApprovalRequested::class, function (ApprovalRequested $event) use (&$token) {
@@ -163,16 +167,17 @@ it('verifies the capability token on programmatic decide, timing-safe', function
 
     $broker = app(ApprovalBroker::class);
 
-    expect($broker->decide($key, 'wrong-token', true))->toBeFalse()
-        ->and(Approval::where('args_hash', $key)->value('status'))->toBe('pending')
-        ->and($broker->decide($key, $token, true, 'ops@example.com'))->toBeTrue()
-        ->and(Approval::where('args_hash', $key)->value('status'))->toBe('granted')
-        ->and(Approval::where('args_hash', $key)->value('decided_by'))->toBe('ops@example.com');
+    expect($broker->decide($approval->id, 'wrong-token', true))->toBeFalse()
+        ->and(Approval::find($approval->id)->status)->toBe('pending')
+        ->and($broker->decide($approval->id, $token, true, 'ops@example.com'))->toBeTrue()
+        ->and(Approval::find($approval->id)->status)->toBe('granted')
+        ->and(Approval::find($approval->id)->decided_by)->toBe('ops@example.com');
 });
 
 it('voids grants when the action definition drifted since approval', function () {
-    $key = knockKey(fn () => runRefund());
-    $this->artisan('agentic:approve', ['key' => $key])->assertSuccessful();
+    $approval = knockApproval(fn () => runRefund());
+    $key = $approval->args_hash;
+    $this->artisan('agentic:approve', ['id' => $approval->id])->assertSuccessful();
 
     Approval::where('args_hash', $key)->update(['definition_hash' => 'stale-hash']);
 
@@ -184,11 +189,11 @@ it('voids grants when the action definition drifted since approval', function ()
 });
 
 it('denies via agentic:deny and the agent knocks again on retry', function () {
-    $key = knockKey(fn () => runRefund());
+    $approval = knockApproval(fn () => runRefund());
 
-    $this->artisan('agentic:deny', ['key' => $key])->assertSuccessful();
+    $this->artisan('agentic:deny', ['id' => $approval->id])->assertSuccessful();
 
-    expect(Approval::where('args_hash', $key)->value('status'))->toBe('denied')
+    expect(Approval::where('args_hash', $approval->args_hash)->value('status'))->toBe('denied')
         ->and(fn () => runRefund())->toThrow(ApprovalRequiredException::class);
 });
 
@@ -215,7 +220,10 @@ it('redacts configured globs from the approval payload', function () {
     } catch (ApprovalRequiredException $e) {
         $approval = Approval::where('args_hash', $e->key)->firstOrFail();
 
-        expect($approval->args_redacted)->toBe([
+        // toEqual, not toBe: MySQL's native JSON type reorders object keys
+        // (by length, then bytewise) on the round-trip, so key order here is
+        // a property of the driver, not of the redactor. Match AuditTest.
+        expect($approval->args_redacted)->toEqual([
             'username' => 'dom',
             'password' => '[redacted]',
             'card' => ['holder' => 'D. Om', 'secret' => '[redacted]'],

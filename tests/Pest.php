@@ -1,5 +1,7 @@
 <?php
 
+use Gtapps\LaravelAgentic\Approvals\Approval;
+use Gtapps\LaravelAgentic\Approvals\ApprovalRequiredException;
 use Gtapps\LaravelAgentic\Tests\HttpEnabledTestCase;
 use Gtapps\LaravelAgentic\Tests\TestCase;
 use Illuminate\Support\Facades\Schema;
@@ -35,6 +37,29 @@ function approvalKey(string $text): string
     preg_match('/key ([0-9a-f]{64})/', $text, $matches);
 
     return $matches[1];
+}
+
+function approvalId(string $text): string
+{
+    preg_match('/agentic:approve (\w{26})/', $text, $matches);
+
+    return $matches[1];
+}
+
+/**
+ * Runs a call expected to knock and returns the approval row it created —
+ * needed whenever a test must approve/deny by id (the decision identity)
+ * while still asserting against args_hash separately.
+ */
+function knockApproval(callable $call): Approval
+{
+    try {
+        $call();
+    } catch (ApprovalRequiredException $e) {
+        return Approval::findOrFail($e->approvalId);
+    }
+
+    throw new RuntimeException('Expected an approval knock');
 }
 
 function useUsersTable(): void

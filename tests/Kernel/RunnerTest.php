@@ -43,7 +43,7 @@ it('runs the workbench action end-to-end with authorize honored', function () {
         Agentic::run('refund-invoice', ['invoiceId' => 42, 'amount' => 99.5], $ctx);
         $this->fail('Expected an approval knock');
     } catch (ApprovalRequiredException $e) {
-        $this->artisan('agentic:approve', ['key' => $e->key])->assertSuccessful();
+        $this->artisan('agentic:approve', ['id' => $e->approvalId])->assertSuccessful();
     }
 
     $result = Agentic::run('refund-invoice', ['invoiceId' => 42, 'amount' => 99.5], $ctx);
