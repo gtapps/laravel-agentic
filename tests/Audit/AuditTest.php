@@ -123,3 +123,11 @@ it('writes an ok row for a readOnly action that opts into audit', function () {
         ->and($rows[0]->status)->toBe('ok')
         ->and($rows[0]->surface)->toBe('cli');
 });
+
+it('resolves the connection from agentic.audit.connection, defaulting to null', function () {
+    expect((new ActionLog)->getConnectionName())->toBeNull();
+
+    config(['agentic.audit.connection' => 'sqlite']);
+
+    expect((new ActionLog)->getConnectionName())->toBe('sqlite');
+});

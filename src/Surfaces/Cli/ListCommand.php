@@ -6,6 +6,7 @@ use Gtapps\LaravelAgentic\Enums\Surface;
 use Gtapps\LaravelAgentic\Kernel\ActionDefinition;
 use Gtapps\LaravelAgentic\Kernel\Registry;
 use Illuminate\Console\Command;
+use Illuminate\Contracts\Config\Repository;
 
 class ListCommand extends Command
 {
@@ -13,7 +14,7 @@ class ListCommand extends Command
 
     protected $description = 'List registered agentic actions';
 
-    public function handle(Registry $registry): int
+    public function handle(Registry $registry, Repository $config): int
     {
         $definitions = $registry->definitions();
 
@@ -24,12 +25,13 @@ class ListCommand extends Command
         }
 
         $this->table(
-            ['Name', 'Surfaces', 'Read-only', 'Needs approval'],
+            ['Name', 'Surfaces', 'Read-only', 'Needs approval', 'Audit'],
             collect($definitions)->map(fn (ActionDefinition $d) => [
                 $d->name,
                 implode(', ', Surface::values($d->surfaces)),
                 $d->readOnly ? 'yes' : 'no',
                 is_string($d->needsApproval) ? $d->needsApproval : ($d->needsApproval ? 'yes' : 'no'),
+                $d->isAuditEffective($config) ? 'yes' : 'no',
             ])->values()->all()
         );
 

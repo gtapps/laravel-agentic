@@ -28,7 +28,7 @@ class AgenticServiceProvider extends ServiceProvider
     {
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
 
-        if ($this->app['config']->get('agentic.http.enabled', true)) {
+        if ($this->app['config']->get('agentic.http.enabled', false)) {
             $this->loadRoutesFrom(__DIR__.'/../routes/agentic.php');
         }
 

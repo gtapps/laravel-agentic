@@ -82,3 +82,29 @@ it('asserts audited for a readOnly action that opts into audit', function () {
 
     $fake->assertAudited('audited-read');
 });
+
+it('asserts not audited for readOnly or opted-out actions', function () {
+    Agentic::register([ReadOnlyLookupAction::class]);
+
+    $fake = Agentic::fake();
+
+    Agentic::run('lookup', ['message' => 'x'], fakeCtx());
+
+    $fake->assertNotAudited('lookup');
+});
+
+it('fails assertNotAudited for an audited action', function () {
+    $fake = Agentic::fake();
+
+    Agentic::run('refund-invoice', ['invoiceId' => 1, 'amount' => 5.0], fakeCtx());
+
+    expect(fn () => $fake->assertNotAudited('refund-invoice'))
+        ->toThrow(AssertionFailedError::class, 'Action [refund-invoice] is audited.');
+});
+
+it('assertNotAudited still requires the action to have run', function () {
+    $fake = Agentic::fake();
+
+    expect(fn () => $fake->assertNotAudited('refund-invoice'))
+        ->toThrow(AssertionFailedError::class, 'Expected action [refund-invoice] to have run, but it did not.');
+});

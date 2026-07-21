@@ -95,9 +95,26 @@ class AgenticFake extends Runner
     {
         $this->assertRan($name);
 
+        Assert::assertTrue($this->resolvedAudit($name), "Action [{$name}] is not audited.");
+    }
+
+    /**
+     * Inverse of assertAudited() — pins that an action's definition resolves
+     * to NOT audited (e.g. a readOnly action that never opted in).
+     */
+    public function assertNotAudited(string $name): void
+    {
+        $this->assertRan($name);
+
+        Assert::assertFalse($this->resolvedAudit($name), "Action [{$name}] is audited.");
+    }
+
+    protected function resolvedAudit(string $name): bool
+    {
         $definition = $this->registry->find($name);
 
         Assert::assertNotNull($definition, "Action [{$name}] is not registered.");
-        Assert::assertTrue($definition->audit, "Action [{$name}] is not audited.");
+
+        return $definition->audit;
     }
 }

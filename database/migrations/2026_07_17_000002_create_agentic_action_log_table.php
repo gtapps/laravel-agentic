@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('agentic_action_log', function (Blueprint $table) {
+        Schema::connection(config('agentic.audit.connection'))->create('agentic_action_log', function (Blueprint $table) {
             $table->ulid('id')->primary();
             $table->string('action')->index();
             $table->string('surface');
@@ -27,6 +27,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('agentic_action_log');
+        Schema::connection(config('agentic.audit.connection'))->dropIfExists('agentic_action_log');
     }
 };

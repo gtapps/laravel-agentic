@@ -26,9 +26,7 @@ class Recorder
     {
         $definition = $call->definition;
 
-        if ($definition === null
-            || ! $definition->audit
-            || ! $this->config->get('agentic.audit.enabled', true)) {
+        if ($definition === null || ! $definition->isAuditEffective($this->config)) {
             return;
         }
 

@@ -4,6 +4,7 @@ namespace Gtapps\LaravelAgentic\Kernel;
 
 use Gtapps\LaravelAgentic\Enums\Mismatch;
 use Gtapps\LaravelAgentic\Enums\Surface;
+use Illuminate\Contracts\Config\Repository;
 
 /**
  * Immutable, serializable snapshot of one action: attribute metadata plus
@@ -45,6 +46,15 @@ final class ActionDefinition
     public function exposedTo(Surface $surface): bool
     {
         return in_array($surface, $this->surfaces, true);
+    }
+
+    /**
+     * Whether this action's runs actually get an audit row: the per-action
+     * policy AND the global agentic.audit.enabled switch.
+     */
+    public function isAuditEffective(Repository $config): bool
+    {
+        return $this->audit && $config->get('agentic.audit.enabled', true);
     }
 
     public static function hash(array $attributes): string

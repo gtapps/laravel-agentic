@@ -8,7 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('agentic_approvals', function (Blueprint $table) {
+        Schema::connection(config('agentic.approvals.connection'))->create('agentic_approvals', function (Blueprint $table) {
             $table->ulid('id')->primary();
             $table->string('action');
             $table->string('args_hash', 64);
@@ -33,6 +33,6 @@ return new class extends Migration
 
     public function down(): void
     {
-        Schema::dropIfExists('agentic_approvals');
+        Schema::connection(config('agentic.approvals.connection'))->dropIfExists('agentic_approvals');
     }
 };
