@@ -176,7 +176,8 @@ laravel/ai 0.10 can pause a run for a human, so the ai-tool surface uses that
 instead of the retry protocol above: the run stops before the tool executes,
 and the model is never asked to reissue anything.
 
-The broker still decides. `Agentic::approvalDecisions()` reads the answers a
+The broker still decides. The knock is raised as the run pauses, before laravel/ai
+hands it back to you; `Agentic::approvalDecisions()` then reads the answers a
 human gave through any channel — `agentic:approve`, or your own — and hands
 laravel/ai the decisions it needs to continue:
 
@@ -184,8 +185,8 @@ laravel/ai the decisions it needs to continue:
 $response = $agent->forUser($user)->prompt('Refund invoice 42');
 
 if ($response->hasPendingApprovals()) {
-    // Raises the knock on the first pass; returns null until every paused
-    // call has an answer, so poll (or re-enter on your approval event).
+    // Returns null until every paused call has an answer, so poll (or
+    // re-enter on your approval event).
     $decisions = Agentic::approvalDecisions($response->pendingApprovals, $user);
 
     if ($decisions !== null) {

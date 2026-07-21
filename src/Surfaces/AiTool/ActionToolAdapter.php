@@ -3,8 +3,13 @@
 namespace Gtapps\LaravelAgentic\Surfaces\AiTool;
 
 use Gtapps\LaravelAgentic\AgenticManager;
+use Gtapps\LaravelAgentic\Approvals\Approval as ApprovalRecord;
+use Gtapps\LaravelAgentic\Approvals\ApprovalBroker;
 use Gtapps\LaravelAgentic\Approvals\ApprovalRequiredException;
 use Gtapps\LaravelAgentic\Approvals\ApprovalRequirement;
+use Gtapps\LaravelAgentic\Approvals\Canonicalizer;
+use Gtapps\LaravelAgentic\Audit\Recorder;
+use Gtapps\LaravelAgentic\Audit\Redactor;
 use Gtapps\LaravelAgentic\Contracts\ActionContext;
 use Gtapps\LaravelAgentic\Enums\Surface;
 use Gtapps\LaravelAgentic\Exceptions\ActionDenied;
@@ -51,6 +56,9 @@ class ActionToolAdapter implements Approvable, Tool
         protected AuthFactory $auth,
         protected ActionPreparer $preparer,
         protected ApprovalRequirement $requirement,
+        protected ApprovalBroker $broker,
+        protected Redactor $redactor,
+        protected Recorder $recorder,
         protected ?Authenticatable $principal = null,
     ) {}
 
@@ -93,18 +101,23 @@ class ActionToolAdapter implements Approvable, Tool
     }
 
     /**
-     * Whether laravel/ai should pause this call for a human.
+     * Whether laravel/ai should pause this call for a human — and, when it
+     * should, the knock the human answers.
      *
-     * Answers from policy alone — readOnly plus the approval predicate — and
-     * touches no approval state. laravel/ai asks again when a paused run
-     * resumes, and the answer decides which tool calls MUST carry a decision:
+     * Whether to gate is decided from policy alone: readOnly plus the approval
+     * predicate, never grant state. laravel/ai asks again when a paused run
+     * resumes, and the answer decides which tool calls MUST carry a decision;
      * consulting grant state here would flip the answer once a human decided,
      * either rejecting the app's decision map or, worse, quietly ungating the
-     * call. Minting a knock here would be just as wrong, because a resume's
-     * second ask would raise a duplicate.
+     * call.
      *
-     * The knock itself is raised by whoever acts on the pause — the gate on the
-     * execution path, or Agentic::approvalDecisions() while mapping a resume.
+     * Raising the knock here is safe because the broker is idempotent per
+     * invocation: a resume's second ask returns the row the first ask created
+     * rather than a duplicate. It is also the only place that can raise it
+     * honestly — this is the one hook that has already run Resolve →
+     * ValidateAndHydrate → Authorize, so no unauthorized or malformed call can
+     * put a pending row in front of a human. Readers of a paused run
+     * (Agentic::approvalDecisions()) only ever read.
      */
     public function shouldRequestApproval(Request $request): ?Approval
     {
@@ -124,9 +137,42 @@ class ActionToolAdapter implements Approvable, Tool
             return null;
         }
 
-        return $this->requirement->required($call)
-            ? Approval::required("Approval required for action '{$this->definition->name}'.")
-            : null;
+        if (! $this->requirement->required($call)) {
+            return null;
+        }
+
+        $approval = $this->knock($call);
+
+        return Approval::required(
+            "Approval required for action '{$this->definition->name}'. Approval id: {$approval->id}",
+        );
+    }
+
+    /**
+     * The pending row a human answers, raised once per invocation however often
+     * laravel/ai re-asks. Audited only on the ask that actually created it —
+     * the resume's repeat ask is the same knock, not a second one — and never
+     * at the cost of the pause itself, since a run already waiting on a human
+     * is owed the pause rather than an audit-infrastructure exception.
+     */
+    protected function knock(ActionCall $call): ApprovalRecord
+    {
+        $definition = $call->definition;
+
+        $approval = $this->broker->requestApproval(
+            $definition,
+            Canonicalizer::key($definition, $call->rawArgs),
+            $this->redactor->redact(Canonicalizer::withDefaults($definition, $call->rawArgs)),
+            $call->context,
+        );
+
+        if ($approval->wasRecentlyCreated) {
+            $call->approvalId = $approval->id;
+
+            $this->recorder->recordSafely($call, 'approval_required');
+        }
+
+        return $approval;
     }
 
     /**

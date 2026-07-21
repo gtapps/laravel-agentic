@@ -2,14 +2,9 @@
 
 namespace Gtapps\LaravelAgentic\Surfaces\AiTool;
 
-use Gtapps\LaravelAgentic\Approvals\Approval;
 use Gtapps\LaravelAgentic\Approvals\ApprovalBroker;
-use Gtapps\LaravelAgentic\Approvals\Canonicalizer;
-use Gtapps\LaravelAgentic\Audit\Recorder;
-use Gtapps\LaravelAgentic\Audit\Redactor;
 use Gtapps\LaravelAgentic\Contracts\ActionContext;
 use Gtapps\LaravelAgentic\Enums\Surface;
-use Gtapps\LaravelAgentic\Kernel\ActionCall;
 use Gtapps\LaravelAgentic\Kernel\ActionDefinition;
 use Gtapps\LaravelAgentic\Kernel\ContextFactory;
 use Gtapps\LaravelAgentic\Kernel\Registry;
@@ -24,9 +19,10 @@ use Laravel\Ai\Approvals\PendingApproval;
  * reading them from the broker so a human answers once, in one place, however
  * many surfaces are in play.
  *
- * This is where the knock is raised. The Approvable hook cannot do it — it is
- * asked again on resume and would duplicate the row — so the first pass here
- * creates what the human will act on, and later passes read the answer.
+ * Purely a reader. The knock was already raised by the Approvable hook that
+ * paused the run, which is the only place that has authorized the call first —
+ * so this public entry point cannot be handed fabricated pending calls and
+ * talked into putting a row in front of a human.
  *
  * @internal
  */
@@ -36,8 +32,6 @@ class PendingApprovalMapper
         protected Registry $registry,
         protected ApprovalBroker $broker,
         protected ContextFactory $contexts,
-        protected Redactor $redactor,
-        protected Recorder $recorder,
         protected AuthFactory $auth,
     ) {}
 
@@ -74,7 +68,7 @@ class PendingApprovalMapper
 
             $context = $this->contexts->make(Surface::AiTool, $principal, idempotencyKey: $pending->id);
 
-            $decision = $this->decide($definition, $pending, $context);
+            $decision = $this->decide($definition, $context);
 
             // Every call is visited even once one is known to be unanswered:
             // bailing early would leave later calls without the knock a human
@@ -93,10 +87,19 @@ class PendingApprovalMapper
     /**
      * Null means "no answer yet" — not "no".
      */
-    protected function decide(ActionDefinition $definition, PendingApproval $pending, ActionContext $context): ?Decision
+    protected function decide(ActionDefinition $definition, ActionContext $context): ?Decision
     {
-        $approval = $this->broker->stateFor(ApprovalBroker::invocationKey($context))
-            ?? $this->knock($definition, $pending, $context);
+        $approval = $this->broker->stateFor(ApprovalBroker::invocationKey($context));
+
+        // Every gated call already knocked, in the Approvable hook that paused
+        // it — reading nothing means this reader is not looking where the knock
+        // was written, almost always a principal that does not match the run's.
+        // Knocking here to paper over that would ask a human to approve a call
+        // whose execution then refuses the grant; rejecting says so at once
+        // instead of hanging until the TTL.
+        if ($approval === null) {
+            return Decision::reject('No approval was requested for this call under the principal it is being resumed with.');
+        }
 
         // A definition that changed after the knock was raised voids it: the
         // human approved an action that no longer exists in that shape.
@@ -114,25 +117,5 @@ class PendingApprovalMapper
             'expired' => Decision::reject('The approval request expired before it was answered.'),
             default => null,
         };
-    }
-
-    protected function knock(ActionDefinition $definition, PendingApproval $pending, ActionContext $context): Approval
-    {
-        $approval = $this->broker->requestApproval(
-            $definition,
-            Canonicalizer::key($definition, $pending->arguments),
-            $this->redactor->redact(Canonicalizer::withDefaults($definition, $pending->arguments)),
-            $context,
-        );
-
-        $call = new ActionCall($definition->name, $pending->arguments, $context);
-        $call->definition = $definition;
-        $call->approvalId = $approval->id;
-
-        // Audited like any other knock, but a failing recorder must not strand
-        // a run that is already paused and waiting on a human.
-        $this->recorder->recordSafely($call, 'approval_required');
-
-        return $approval;
     }
 }
