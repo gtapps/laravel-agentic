@@ -32,9 +32,18 @@ class ActionCommand extends Command
             return self::FAILURE;
         }
 
-        $user = $this->option('as') !== null
-            ? $auth->guard()->getProvider()->retrieveById($this->option('as'))
-            : null;
+        $requestedUserId = $this->option('as');
+        $user = null;
+
+        if ($requestedUserId !== null) {
+            $user = $auth->guard()->getProvider()->retrieveById($requestedUserId);
+
+            if ($user === null) {
+                $this->error("No user found for --as={$requestedUserId}.");
+
+                return self::FAILURE;
+            }
+        }
 
         $context = $contexts->make(Surface::Cli, $user);
 

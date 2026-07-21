@@ -8,6 +8,7 @@ use Gtapps\LaravelAgentic\Enums\Surface;
 use Gtapps\LaravelAgentic\Exceptions\ActionDenied;
 use Gtapps\LaravelAgentic\Kernel\ActionDefinition;
 use Gtapps\LaravelAgentic\Kernel\ContextFactory;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\JsonSchema\JsonSchema as JsonSchemaFactory;
@@ -39,6 +40,7 @@ class ActionToolAdapter implements Tool
         protected AgenticManager $agentic,
         protected ContextFactory $contexts,
         protected AuthFactory $auth,
+        protected ?Authenticatable $principal = null,
     ) {}
 
     public function name(): string
@@ -80,12 +82,13 @@ class ActionToolAdapter implements Tool
     }
 
     /**
-     * Context is the running agent's user. Errors are returned
+     * Context is the explicit principal passed to Agentic::tools(), when
+     * given; otherwise the ambient guard's user. Errors are returned
      * in-band as text the model can act on.
      */
     public function handle(Request $request): Stringable|string
     {
-        $context = $this->contexts->make(Surface::AiTool, $this->auth->guard()->user());
+        $context = $this->contexts->make(Surface::AiTool, $this->principal ?? $this->auth->guard()->user());
 
         try {
             $result = $this->agentic->run($this->definition->name, $request->toArray(), $context);
