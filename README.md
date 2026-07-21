@@ -111,6 +111,23 @@ authorization, approval, and audit behavior, via:
 `php artisan agentic:list` shows everything registered; `agentic:cache`
 compiles the manifest like `route:cache`.
 
+### Caching the manifest
+
+Actions reach the registry two ways: discovery scanning of
+`agentic.discovery.paths` (default `app/Actions`), and `Agentic::register([...])`
+from a service provider, which is how a package or module contributes actions.
+
+`agentic:cache` compiles both into `bootstrap/cache/agentic.php`. As with
+`route:cache` and `config:cache`, **the cached manifest fully replaces both
+sources** — once it exists, a later `Agentic::register()` call is ignored. So
+re-run `agentic:cache` whenever you add an action or install a package that
+registers them; `agentic:clear` (or `optimize:clear`) is the recovery if a stale
+manifest is serving a missing or outdated action. It refuses to write an empty
+manifest, since that file would otherwise shadow every registration.
+
+`optimize:clear` removes the manifest. `optimize` deliberately does *not* build
+it — caching is opt-in, and an app with no actions yet shouldn't fail a deploy.
+
 ## The approval flow
 
 `needsApproval` actions execute only with per-invocation human consent:
@@ -240,6 +257,36 @@ full schema still validates; coherence between the two is linted at
 registration. `outputSchema` with `Mismatch::Warn|Strict|Fallback`
 (`Fallback` requires an `outputFallback(): mixed` method) governs result
 shape.
+
+### Array properties
+
+Object arrays use `#[DataCollectionOf(AddressData::class)]`. Scalar arrays are
+declared with a docblock — `@var int[]`, `@var list<string>`, `@var array<int,
+bool>`; `T` may be `int`, `string`, `float`, or `bool`. Item types are enforced
+on every surface, and elements arriving as strings (CLI arguments, HTTP query
+strings) are coerced to the declared type, so `?ids[]=1&ids[]=2` reaches an
+`int[]` handler as ints.
+
+Enum items (`@var Suit[]`), nested arrays (`@var int[][]`), and string-keyed
+maps (`@var array<string, bool>` — a JSON object, not an array) are not
+supported in v1 and fail at registration rather than compiling to a wrong shape.
+
+One sharp edge worth knowing: a property with a default is still `required` to
+Laravel, and `required` treats `[]` and `''` as empty. So `{"ids": []}` is
+rejected even though the schema marks `ids` optional with `"default": []` —
+omitting the key is the way to mean "none". Add `#[Present]` to the property to
+accept an explicit empty array:
+
+```php
+class ListInvoicesInput extends Data
+{
+    public function __construct(
+        #[Present]
+        /** @var int[] */
+        public array $ids = [],
+    ) {}
+}
+```
 
 ## Testing your app's actions
 

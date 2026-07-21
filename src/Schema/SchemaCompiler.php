@@ -13,6 +13,11 @@ interface SchemaCompiler
 
     /**
      * Validated raw args → hydrated DTO. Throws ValidationException with field errors.
+     *
+     * The compiled schema is optional so the signature stays backwards
+     * compatible, but callers should pass it: constraints the DTO's own
+     * validation rules can't express (scalar array item types) are enforced
+     * from it, and elements are coerced to the types it declares.
      */
-    public function hydrate(string $dtoClass, array $args): object;
+    public function hydrate(string $dtoClass, array $args, array $schema = []): object;
 }

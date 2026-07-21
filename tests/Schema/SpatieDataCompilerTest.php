@@ -3,15 +3,20 @@
 use Gtapps\LaravelAgentic\Schema\SpatieDataCompiler;
 use Gtapps\LaravelAgentic\Schema\UnsupportedSchemaType;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\AddressData;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\ArrayConstraintsData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\ClosureData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\CollectionData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\ConstraintsData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\DefaultsData;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\EnumArrayData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\EnumData;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\MapArrayData;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\NestedArrayData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\NestedData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\NullableData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\PlainArrayData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\PureEnumData;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\ScalarArrayData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\ScalarsData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\SelfRefData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\Suit;
@@ -83,6 +88,24 @@ dataset('schema fixtures', [
         'additionalProperties' => false,
         'required' => ['addresses'],
     ]],
+    'scalar arrays' => [ScalarArrayData::class, [
+        'type' => 'object',
+        'properties' => [
+            'ids' => ['type' => 'array', 'items' => ['type' => 'integer'], 'default' => []],
+            'tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'default' => []],
+            'weights' => ['type' => 'array', 'items' => ['type' => 'number'], 'default' => []],
+            'flags' => ['type' => 'array', 'items' => ['type' => 'boolean'], 'default' => []],
+        ],
+        'additionalProperties' => false,
+    ]],
+    'array size constraints' => [ArrayConstraintsData::class, [
+        'type' => 'object',
+        'properties' => [
+            'ids' => ['type' => 'array', 'items' => ['type' => 'integer'], 'maxItems' => 2, 'default' => []],
+            'tags' => ['type' => 'array', 'items' => ['type' => 'string'], 'minItems' => 1, 'maxItems' => 3, 'default' => []],
+        ],
+        'additionalProperties' => false,
+    ]],
     'constraints' => [ConstraintsData::class, [
         'type' => 'object',
         'properties' => [
@@ -114,6 +137,9 @@ it('is deterministic across repeated compiles', function () {
 dataset('unsupported fixtures', [
     'union type' => [UnionData::class, 'union'],
     'plain array without DataCollectionOf' => [PlainArrayData::class, 'DataCollectionOf'],
+    'enum array (class-typed items unsupported in v1)' => [EnumArrayData::class, 'DataCollectionOf'],
+    'nested scalar array (int[][] must not compile to a flat int[])' => [NestedArrayData::class, 'DataCollectionOf'],
+    'string-keyed map (array<string, T> is a JSON object, not an array)' => [MapArrayData::class, 'DataCollectionOf'],
     'closure' => [ClosureData::class, 'unsupported'],
     'pure enum' => [PureEnumData::class, 'non-backed'],
     'non-Data class' => [Suit::class, 'not a subclass'],
@@ -160,6 +186,81 @@ it('hydrates nested data and collections', function () {
     expect($collection->addresses)->toHaveCount(2)
         ->and($collection->addresses[1])->toBeInstanceOf(AddressData::class)
         ->and($collection->addresses[1]->city)->toBe('Porto');
+});
+
+it('hydrates scalar array input end to end', function () {
+    $dto = (new SpatieDataCompiler)->hydrate(ScalarArrayData::class, [
+        'ids' => [1, 2, 3],
+        'tags' => ['a', 'b'],
+        'weights' => [1.5],
+        'flags' => [true, false],
+    ]);
+
+    expect($dto->ids)->toBe([1, 2, 3])
+        ->and($dto->tags)->toBe(['a', 'b'])
+        ->and($dto->weights)->toBe([1.5])
+        ->and($dto->flags)->toBe([true, false]);
+});
+
+it('enforces scalar array item types from the compiled schema', function () {
+    // spatie infers only a bare `array` rule for a plain array property, so
+    // without the schema-derived `ids.*` rules the advertised `items` would
+    // never be enforced and junk would reach a handler typed against int[].
+    $compiler = new SpatieDataCompiler;
+
+    expect(fn () => $compiler->hydrate(
+        ScalarArrayData::class,
+        ['ids' => ['not-an-int', null, ['nested']]],
+        $compiler->compile(ScalarArrayData::class),
+    ))->toThrow(ValidationException::class);
+});
+
+it('coerces string-transport scalar array items to their declared type', function () {
+    // CLI arguments and HTTP query strings deliver every element as a string,
+    // and models routinely emit ["1","2"] for an integer array.
+    $compiler = new SpatieDataCompiler;
+
+    $dto = $compiler->hydrate(
+        ScalarArrayData::class,
+        ['ids' => ['1', '2'], 'weights' => ['1.5'], 'flags' => ['1', '0']],
+        $compiler->compile(ScalarArrayData::class),
+    );
+
+    expect($dto->ids)->toBe([1, 2])
+        ->and($dto->weights)->toBe([1.5])
+        ->and($dto->flags)->toBe([true, false]);
+});
+
+it('leaves object-item collections to spatie rather than double-validating', function () {
+    // #[DataCollectionOf] items already get per-element rules from spatie; the
+    // schema walker must skip them, and passing the schema must not disturb
+    // either the happy path or spatie's own nested error reporting.
+    $compiler = new SpatieDataCompiler;
+    $schema = $compiler->compile(CollectionData::class);
+
+    $collection = $compiler->hydrate(CollectionData::class, [
+        'addresses' => [['street' => 'Rua A', 'city' => 'Lisboa']],
+    ], $schema);
+
+    expect($collection->addresses[0]->city)->toBe('Lisboa');
+
+    expect(fn () => $compiler->hydrate(CollectionData::class, [
+        'addresses' => [['street' => 'Rua A']],
+    ], $schema))->toThrow(ValidationException::class, 'addresses.0.city');
+});
+
+it('rejects an explicitly empty scalar array despite the schema allowing it', function () {
+    // Known v1 gap, tracked separately: the schema marks a defaulted array
+    // optional with `default: []`, so `{"ids": []}` is schema-valid — but
+    // spatie's RequiredRuleInferrer never consults the default, and Laravel's
+    // `required` rule treats [] as empty. Omitting the key is the only way to
+    // mean "none"; `#[Present]` on the property is the per-DTO escape hatch.
+    $compiler = new SpatieDataCompiler;
+
+    expect(fn () => $compiler->hydrate(ScalarArrayData::class, ['ids' => []]))
+        ->toThrow(ValidationException::class);
+
+    expect($compiler->hydrate(ScalarArrayData::class, [])->ids)->toBe([]);
 });
 
 it('casts enums and applies defaults on hydration', function () {

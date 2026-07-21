@@ -140,3 +140,43 @@ it('caches and clears the manifest like route:cache', function () {
 
     expect(app(Registry::class)->definitions())->toBe([]);
 });
+
+it('refuses to cache an empty manifest and writes no file', function () {
+    config(['agentic.discovery.paths' => []]);
+
+    $registry = app(Registry::class);
+
+    $this->artisan('agentic:cache')->assertFailed();
+
+    expect(is_file($registry->cachePath()))->toBeFalse();
+});
+
+it('clears the cached manifest as part of optimize:clear', function () {
+    // optimize:clear fans out to cache:clear, which would otherwise need a
+    // cache table in the testbench database.
+    config([
+        'cache.default' => 'array',
+        'agentic.discovery.paths' => [realpath(__DIR__.'/../../workbench/app/Actions')],
+    ]);
+
+    $registry = app(Registry::class);
+
+    $this->artisan('agentic:cache')->assertSuccessful();
+
+    expect(is_file($registry->cachePath()))->toBeTrue();
+
+    $this->artisan('optimize:clear')->assertSuccessful();
+
+    expect(is_file($registry->cachePath()))->toBeFalse();
+});
+
+it('reports the number of cached actions', function () {
+    config(['agentic.discovery.paths' => [realpath(__DIR__.'/../../workbench/app/Actions')]]);
+
+    $registry = app(Registry::class);
+
+    $count = $registry->cache();
+
+    expect($count)->toBeGreaterThan(0)
+        ->and($count)->toBe(count($registry->definitions()));
+});
