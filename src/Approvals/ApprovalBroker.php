@@ -71,6 +71,19 @@ class ApprovalBroker
     }
 
     /**
+     * The row for one native invocation in whatever state it reached, so a
+     * caller mapping a paused run can tell "refused" from "not answered yet" —
+     * a distinction the grant-only reads above deliberately cannot make.
+     */
+    public function stateFor(string $invocationKey): ?Approval
+    {
+        return Approval::query()
+            ->where('invocation_key', $invocationKey)
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    /**
      * The one predicate for "a grant this caller may use", shared so the
      * consuming and non-consuming readers can never drift apart — a filter
      * added to one and forgotten on the other would let peek() report a grant

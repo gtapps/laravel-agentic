@@ -10,7 +10,6 @@ use Gtapps\LaravelAgentic\Kernel\Steps\ApprovalGate;
 use Gtapps\LaravelAgentic\Kernel\Steps\Execute;
 use Gtapps\LaravelAgentic\Kernel\Steps\NormalizeResult;
 use Illuminate\Contracts\Container\Container;
-use Illuminate\Support\Facades\Log;
 
 /**
  * The one chokepoint: every surface funnels into run(), and all
@@ -65,16 +64,7 @@ class Runner
                 default => 'error',
             };
 
-            try {
-                $this->recorder->record($call, $status, $e->getMessage());
-            } catch (\Throwable $recorderError) {
-                Log::warning("laravel-agentic: audit recording failed for {$name} ({$status}): {$recorderError->getMessage()}", [
-                    'action' => $name,
-                    'status' => $status,
-                    'request_id' => $context->requestId(),
-                    'exception' => $recorderError,
-                ]);
-            }
+            $this->recorder->recordSafely($call, $status, $e->getMessage());
 
             throw $e;
         }

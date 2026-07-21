@@ -7,6 +7,7 @@ use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\ReadOnlyLookupAction;
 use Illuminate\Auth\GenericUser;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Gate;
+use Laravel\Ai\Approvals\PendingApproval;
 use Laravel\Ai\Tools\Request;
 
 uses(RefreshDatabase::class);
@@ -93,4 +94,66 @@ it('keeps one approval per tool call when the model repeats identical arguments'
         ->toMatchArray(['invoiceId' => 42, 'status' => 'refunded'])
         ->and((string) $adapter->handle(toolRequest(id: 'toolu_2')))
         ->toContain('Approval required');
+});
+
+it('withholds decisions until every gated call has an answer', function () {
+    // laravel/ai rejects a decision map that leaves any gated call unanswered,
+    // so a half-answered batch must read as "keep waiting", not as a partial
+    // resume that throws.
+    $user = new GenericUser(['id' => 1]);
+    $pending = [
+        new PendingApproval('toolu_1', 'refund-invoice', ['invoiceId' => 42, 'amount' => 99.5]),
+        new PendingApproval('toolu_2', 'refund-invoice', ['invoiceId' => 7, 'amount' => 10.0]),
+    ];
+
+    // First pass raises the knocks and answers nothing.
+    expect(Agentic::approvalDecisions($pending, $user))->toBeNull()
+        ->and(Approval::whereStatus('pending')->count())->toBe(2);
+
+    // Still incomplete with only one answered.
+    app(ApprovalBroker::class)->decideViaArtisan(Approval::whereStatus('pending')->orderBy('id')->first()->id, approve: true);
+
+    expect(Agentic::approvalDecisions($pending, $user))->toBeNull();
+
+    // Both answered: a complete map, mixing the grant with the refusal.
+    app(ApprovalBroker::class)->decideViaArtisan(Approval::whereStatus('pending')->sole()->id, approve: false);
+
+    $decisions = Agentic::approvalDecisions($pending, $user);
+
+    expect($decisions)->not->toBeNull()
+        ->and($decisions->get('toolu_1')->isApproved())->toBeTrue()
+        ->and($decisions->get('toolu_2')->isRejected())->toBeTrue();
+});
+
+it('raises each knock once, however often the map is rebuilt while waiting', function () {
+    $user = new GenericUser(['id' => 1]);
+    $pending = [new PendingApproval('toolu_1', 'refund-invoice', ['invoiceId' => 42, 'amount' => 99.5])];
+
+    Agentic::approvalDecisions($pending, $user);
+    Agentic::approvalDecisions($pending, $user);
+    Agentic::approvalDecisions($pending, $user);
+
+    expect(Approval::count())->toBe(1);
+});
+
+it('skips tool calls this package does not own', function () {
+    // Null alone would also describe "still awaiting an answer", so the row
+    // count is the discriminator: an owned, gated call always leaves a knock
+    // behind even while undecided, so zero rows proves it was never ours.
+    expect(Agentic::approvalDecisions([
+        new PendingApproval('toolu_1', 'some-other-agents-tool', []),
+    ], new GenericUser(['id' => 1])))->toBeNull()
+        ->and(Approval::count())->toBe(0);
+});
+
+it('refuses a call whose action changed after the human was asked', function () {
+    $user = new GenericUser(['id' => 1]);
+    $pending = [new PendingApproval('toolu_1', 'refund-invoice', ['invoiceId' => 42, 'amount' => 99.5])];
+
+    Agentic::approvalDecisions($pending, $user);
+    app(ApprovalBroker::class)->decideViaArtisan(Approval::whereStatus('pending')->sole()->id, approve: true);
+
+    Approval::query()->update(['definition_hash' => str_repeat('0', 64)]);
+
+    expect(Agentic::approvalDecisions($pending, $user)->get('toolu_1')->isRejected())->toBeTrue();
 });
