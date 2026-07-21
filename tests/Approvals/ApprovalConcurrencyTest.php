@@ -2,7 +2,6 @@
 
 use Gtapps\LaravelAgentic\Approvals\Approval;
 use Gtapps\LaravelAgentic\Approvals\ApprovalBroker;
-use Gtapps\LaravelAgentic\Approvals\ApprovalRequiredException;
 use Gtapps\LaravelAgentic\Contracts\ActionContext;
 use Gtapps\LaravelAgentic\Enums\Surface;
 use Gtapps\LaravelAgentic\Events\ApprovalGranted;
@@ -30,13 +29,7 @@ function concurrencyCtx(int $userId): ActionContext
 
 function concurrencyKnock(ActionContext $context, array $args = ['invoiceId' => 42, 'amount' => 99.5]): Approval
 {
-    try {
-        Agentic::run('refund-invoice', $args, $context);
-    } catch (ApprovalRequiredException $e) {
-        return Approval::where('id', $e->approvalId)->firstOrFail();
-    }
-
-    throw new RuntimeException('Expected an approval knock');
+    return knockApproval(fn () => Agentic::run('refund-invoice', $args, $context));
 }
 
 function baseApprovalAttributes(array $overrides = []): array
@@ -117,17 +110,18 @@ it('refuses to settle a pending row past its expiry, even before lazy expiry has
         ->and(Approval::find($approval->id)->status)->toBe('pending');
 });
 
-it('recovers from a lost create race via insert-catch-refetch', function () {
+it('reuses the one pending row for a repeated knock, keyed on active_key alone', function () {
     $context = concurrencyCtx(1);
     $args = ['invoiceId' => 42, 'amount' => 99.5];
 
     $first = concurrencyKnock($context, $args);
 
-    // Simulate a concurrent knock winning the create race: the same
-    // (key, principal) pending row already exists under a different
-    // args_hash — our idempotency pre-check (which filters by args_hash)
-    // therefore misses it, so the broker proceeds to INSERT and collides
-    // with it on the unique active_key index instead.
+    // The idempotency pre-check matches on active_key + status only — never
+    // on args_hash — so it still recognises this row as the pending one for
+    // (key, principal) even after the stored args_hash drifts underneath it.
+    // NOTE: this covers the pre-check, not createOrFirst()'s unique-violation
+    // refetch; that path only opens between the pre-check and the INSERT and
+    // is not reachable from a single-threaded test.
     $racedHash = hash('sha256', 'raced-'.$first->args_hash);
     Approval::where('id', $first->id)->update(['args_hash' => $racedHash]);
 

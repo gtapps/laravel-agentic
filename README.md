@@ -135,8 +135,12 @@ it — caching is opt-in, and an app with no actions yet shouldn't fail a deploy
 1. The agent calls the action. It does not execute; the agent receives an
    agent-legible knock: *"Approval required for action 'refund-invoice'.
    Pending under key `abc…`. Ask a human to run: `php artisan
-   agentic:approve abc…`. Then retry this exact call unchanged."*
-2. A human runs `agentic:approve <key>` (or `agentic:deny <key>`).
+   agentic:approve 01J…`. Then retry this exact call unchanged."*
+2. A human runs `agentic:approve <id>` (or `agentic:deny <id>`). The **id**
+   is the approval row's ULID — the decision identity. The **key** identifies
+   the action+args combination and is shown for correlation only: two
+   principals knocking with identical args share a key but hold separate
+   approvals, so deciding by key would be ambiguous.
 3. The agent retries the identical call — it executes exactly once. The
    grant is consumed; a repeat call knocks again.
 
@@ -172,9 +176,9 @@ channel you like and call the broker:
 ```php
 // routes/web.php — POST only. Never grant over GET: chat-app link
 // preview prefetchers will auto-approve your links.
-Route::post('/approvals/{key}', function (string $key, Request $request) {
+Route::post('/approvals/{id}', function (string $id, Request $request) {
     $granted = app(ApprovalBroker::class)->decide(
-        $key,
+        $id,                        // $approval->id from ApprovalRequested
         $request->input('token'),   // timing-safe verified
         approve: true,
         decidedBy: $request->user()->email,

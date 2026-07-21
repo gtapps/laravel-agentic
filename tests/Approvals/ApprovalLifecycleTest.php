@@ -47,22 +47,6 @@ function knockKey(callable $call): string
     throw new RuntimeException('Expected an approval knock');
 }
 
-/**
- * Like knockKey() but returns the approval row itself — needed whenever the
- * test must approve/deny by id (the decision identity) while still asserting
- * against args_hash separately.
- */
-function knockApproval(callable $call): Approval
-{
-    try {
-        $call();
-    } catch (ApprovalRequiredException $e) {
-        return Approval::where('id', $e->approvalId)->firstOrFail();
-    }
-
-    throw new RuntimeException('Expected an approval knock');
-}
-
 it('walks the full lifecycle: knock → approve → identical retry executes → grant consumed → re-knock', function () {
     // Knock: agent-legible message carries the key, the id, and the retry protocol.
     $key = null;

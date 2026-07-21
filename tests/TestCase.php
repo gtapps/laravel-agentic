@@ -30,19 +30,17 @@ abstract class TestCase extends Orchestra
 
         $app['config']->set('database.default', $connection);
 
-        foreach (['mysql', 'pgsql'] as $driver) {
-            if ($connection !== $driver) {
-                continue;
-            }
-
-            $app['config']->set("database.connections.{$driver}", [
-                'driver' => $driver,
-                'host' => env('DB_HOST', '127.0.0.1'),
-                'port' => env('DB_PORT', $driver === 'mysql' ? '3306' : '5432'),
-                'database' => env('DB_DATABASE', 'agentic_test'),
-                'username' => env('DB_USERNAME', $driver === 'mysql' ? 'root' : 'postgres'),
-                'password' => env('DB_PASSWORD', ''),
-            ]);
+        if (! in_array($connection, ['mysql', 'pgsql'], true)) {
+            return;
         }
+
+        $app['config']->set("database.connections.{$connection}", [
+            'driver' => $connection,
+            'host' => env('DB_HOST', '127.0.0.1'),
+            'port' => env('DB_PORT', $connection === 'mysql' ? '3306' : '5432'),
+            'database' => env('DB_DATABASE', 'agentic_test'),
+            'username' => env('DB_USERNAME', $connection === 'mysql' ? 'root' : 'postgres'),
+            'password' => env('DB_PASSWORD', ''),
+        ]);
     }
 }

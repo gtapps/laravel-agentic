@@ -39,7 +39,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        db: ['mysql', 'pgsql']
+        include:
+          - db: 'mysql'
+            port: '3306'
+            username: 'root'
+            password: ''
+          - db: 'pgsql'
+            port: '5432'
+            username: 'postgres'
+            password: 'postgres'
 
     name: Approvals on ${{ matrix.db }}
 
@@ -70,6 +78,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
+          extensions: pdo_mysql, pdo_pgsql
           coverage: none
 
       - name: Install dependencies
@@ -79,8 +88,8 @@ jobs:
         env:
           DB_CONNECTION: ${{ matrix.db }}
           DB_HOST: 127.0.0.1
-          DB_PORT: ${{ matrix.db == 'mysql' && '3306' || '5432' }}
+          DB_PORT: ${{ matrix.port }}
           DB_DATABASE: agentic_test
-          DB_USERNAME: ${{ matrix.db == 'mysql' && 'root' || 'postgres' }}
-          DB_PASSWORD: ${{ matrix.db == 'mysql' && '' || 'postgres' }}
+          DB_USERNAME: ${{ matrix.username }}
+          DB_PASSWORD: ${{ matrix.password }}
         run: php vendor/bin/pest tests/Approvals
