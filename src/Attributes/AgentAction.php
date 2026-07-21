@@ -15,6 +15,7 @@ class AgentAction
      * @param  Surface[]  $surfaces
      * @param  class-string|null  $agentInputSchema  Compact DTO shown to models; the full schema still validates.
      * @param  class-string|null  $outputSchema  Mismatch::Fallback requires outputFallback(): mixed on the action class.
+     * @param  ?bool  $audit  null = audit iff non-readOnly (default); true = always audit, even readOnly; false = never.
      */
     public function __construct(
         public string $name,
@@ -25,6 +26,6 @@ class AgentAction
         public ?string $agentInputSchema = null,
         public ?string $outputSchema = null,
         public Mismatch $outputMismatch = Mismatch::Warn,
-        public bool $audit = true,
+        public ?bool $audit = null,
     ) {}
 }

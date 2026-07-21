@@ -51,8 +51,9 @@ return [
     'redact' => [],
 
     /*
-    | Master switch for the agentic_action_log recorder. Per-action opt-out
-    | via #[AgentAction(audit: false)].
+    | Master switch for the agentic_action_log recorder. Non-readOnly actions
+    | audit by default; opt out per-action via #[AgentAction(audit: false)].
+    | readOnly actions are excluded by default — opt in with #[AgentAction(audit: true)].
     */
     'audit' => [
         'enabled' => true,
