@@ -1,0 +1,13 @@
+/vendor/
+/node_modules/
+composer.lock
+.phpunit.cache
+.phpunit.result.cache
+build
+.DS_Store
+/graphify-out/
+/.codex/config.toml
+/.grok/config.toml
+/.claude/settings.local.json
+/HANDOFF.md
+/PLAN-V1.md

@@ -1,0 +1,5 @@
+providers:
+  - Spatie\LaravelData\LaravelDataServiceProvider
+  - Laravel\Mcp\Server\McpServiceProvider
+  - Gtapps\LaravelAgentic\AgenticServiceProvider
+  - Workbench\App\Providers\WorkbenchServiceProvider

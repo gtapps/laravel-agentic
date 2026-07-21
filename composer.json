@@ -1,0 +1,67 @@
+{
+    "name": "gtapps/laravel-agentic",
+    "description": "An agent-native action layer for Laravel. Define an action once; expose it to humans and agents everywhere — with approvals and audit built in.",
+    "keywords": [
+        "laravel",
+        "agent",
+        "mcp",
+        "ai",
+        "actions",
+        "approvals",
+        "audit"
+    ],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "gtapps"
+        }
+    ],
+    "require": {
+        "php": "^8.3",
+        "illuminate/contracts": "^12.0|^13.0",
+        "laravel/ai": "~0.9.1",
+        "laravel/mcp": "~0.9.0",
+        "spatie/laravel-data": "^4.23"
+    },
+    "require-dev": {
+        "laravel/boost": "^2.4",
+        "laravel/pint": "^1.14",
+        "orchestra/testbench": "^10.0|^11.0",
+        "pestphp/pest": "^3.0|^4.0",
+        "pestphp/pest-plugin-laravel": "^3.0|^4.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Gtapps\\LaravelAgentic\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Gtapps\\LaravelAgentic\\Tests\\": "tests/",
+            "Workbench\\App\\": "workbench/app/"
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/pest",
+        "format": "vendor/bin/pint"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Gtapps\\LaravelAgentic\\AgenticServiceProvider"
+            ],
+            "aliases": {
+                "Agentic": "Gtapps\\LaravelAgentic\\Facades\\Agentic"
+            }
+        }
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true,
+            "php-http/discovery": true
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

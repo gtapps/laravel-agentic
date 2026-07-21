@@ -1,0 +1,11 @@
+{
+    "servers": {
+        "laravel-boost": {
+            "command": "php",
+            "args": [
+                "vendor/bin/testbench",
+                "boost:mcp"
+            ]
+        }
+    }
+}
