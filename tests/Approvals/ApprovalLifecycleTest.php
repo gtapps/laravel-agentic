@@ -5,6 +5,7 @@ use Gtapps\LaravelAgentic\Approvals\ApprovalBroker;
 use Gtapps\LaravelAgentic\Approvals\ApprovalRequiredException;
 use Gtapps\LaravelAgentic\Enums\Surface;
 use Gtapps\LaravelAgentic\Events\ApprovalRequested;
+use Gtapps\LaravelAgentic\Exceptions\ActionDenied;
 use Gtapps\LaravelAgentic\Facades\Agentic;
 use Gtapps\LaravelAgentic\Kernel\ContextFactory;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\FailClosedAction;
@@ -14,6 +15,7 @@ use Illuminate\Auth\GenericUser;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 use Workbench\App\Actions\RefundResult;
 
 uses(RefreshDatabase::class);
@@ -85,6 +87,17 @@ it('walks the full lifecycle: knock → approve → identical retry executes →
 
     // Third identical call knocks again.
     expect(fn () => runRefund())->toThrow(ApprovalRequiredException::class);
+});
+
+it('never creates an approval row for a call that fails before the gate', function () {
+    // ActionPreparer runs Resolve → ValidateAndHydrate → Authorize ahead of the
+    // gate, so neither a denied principal nor malformed args can knock. Approval
+    // is consent layered on standing authorization — an unauthorized caller must
+    // not be able to put a pending row in front of a human to approve.
+    expect(fn () => runRefund(userId: 99))->toThrow(ActionDenied::class);
+    expect(fn () => Agentic::run('refund-invoice', ['invoiceId' => 42], ctx()))->toThrow(ValidationException::class);
+
+    expect(Approval::count())->toBe(0);
 });
 
 it('keys approvals on canonical args: different args knock separately, key order does not matter', function () {
