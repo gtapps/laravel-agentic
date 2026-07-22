@@ -1,6 +1,12 @@
 # laravel-agentic
 
-![Downloads](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/gtapps/laravel-agentic/_gh_traffic_stats/.github/badges/clones.json)
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
+  <a href="https://github.com/gtapps/laravel-agentic/actions/workflows/tests.yml"><img src="https://github.com/gtapps/laravel-agentic/actions/workflows/tests.yml/badge.svg" alt="Tests" /></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.0.6-green.svg" alt="Version 0.0.6" /></a>
+  <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/gtapps/laravel-agentic/_gh_traffic_stats/.github/badges/clones.json" alt="Downloads" />
+  <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome" />
+</p>
 
 **An agent-native action layer for Laravel. Define an action once; expose it
 to humans and agents everywhere — with approvals and audit built in.**

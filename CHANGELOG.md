@@ -3,6 +3,16 @@
 All notable changes to `gtapps/laravel-agentic` are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.0.6] - 2026-07-22
+
+### Fixed
+
+- **mcp: empty input schemas now encode as a JSON object** — `ActionTool::toArray()` previously let PHP serialize an action's empty `properties` map as `[]`; strict MCP clients that require an object there rejected the schema. `properties` is now coerced to a `stdClass` so it always encodes as `{}`.
+
+### Upgrading
+
+No config or migration changes required.
+
 ## [0.0.5] - 2026-07-22
 
 ### Fixed
