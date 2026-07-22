@@ -342,6 +342,62 @@ class ListInvoicesInput extends Data
 }
 ```
 
+## Coming from laravel/mcp
+
+If you're porting an existing `laravel/mcp` tool server, the shapes map
+directly:
+
+| `laravel/mcp` | `laravel-agentic` |
+|---|---|
+| `Tool::handle()` | action `handle()` |
+| `Tool::schema()` | spatie/laravel-data `Data` input DTO |
+| `tokenCan('x')` in the tool | `authorize()` calling `tokenCan('x')` |
+| transport middleware on the route | server middleware where `AgenticServer` is mounted |
+| idempotency wrapper in the tool | keep it in `handle()` |
+
+Three things that are easy to get wrong on the way over:
+
+**Authorization is opt-in per action, not implicit.** An action with no
+`authorize()` method is allowed for any caller a surface already
+authenticated — the same as a Laravel route with no policy check; see
+["`authorize()` is the standing gate, not exposure"](#audit) for the full
+implications and [Approvals vs Sanctum + Policies](#approvals-vs-sanctum-policies)
+for how it composes with the approval flow. Define `authorize()` on every
+mutating action you port.
+
+**Reuse your `FormRequest` rules — don't re-derive them.** Input DTOs
+validate through spatie/laravel-data's normal pipeline, which merges a
+static `rules(): array` on top of the rules inferred from types and
+attributes. A `FormRequest::rules()` array can be pasted in as-is — for the
+`RefundInvoiceInput` from the Quickstart above:
+
+```php
+public static function rules(): array
+{
+    return [
+        'invoiceId' => ['required', 'integer', 'exists:invoices,id'],
+        'amount' => ['required', 'numeric', 'min:0.01'],
+    ];
+}
+```
+
+These rules run identically on all five surfaces. One caveat: rules that
+only exist in `rules()` (closures, `exists:`, conditional `sometimes`) are
+enforced but aren't visible in the JSON Schema shown to agents — express
+structural constraints (types, required-ness) via properties and
+attributes, and keep `rules()` for business rules a schema can't capture.
+
+**`agentic:cache` only sees actions your provider registered during the
+cache run.** Like `route:cache`, the compiled manifest is a snapshot: if
+the provider calling `Agentic::register(...)` is deferred or conditionally
+booted, its actions won't be in the manifest until that provider runs
+during `agentic:cache`. Prefer `agentic.discovery.paths` for actions you
+want cached unconditionally, or make the registering provider eager.
+
+Generators, a `FormRequest`-to-DTO codegen command, and other
+boilerplate-reduction tooling for this migration path are tracked
+separately and aren't part of this package.
+
 ## Testing your app's actions
 
 ```php
