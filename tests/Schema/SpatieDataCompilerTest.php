@@ -15,6 +15,7 @@ use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\MapArrayData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\MappedInputData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\NestedArrayData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\NestedData;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\NestedMappedInputData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\NullableData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\PaginatedFilterData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\PlainArrayData;
@@ -356,6 +357,18 @@ it('hydrates the schema-advertised mapped keys and rejects raw PHP names', funct
 
     expect(fn () => $compiler->hydrate(MappedInputData::class, ['whitelabelId' => 7]))
         ->toThrow(ValidationException::class);
+});
+
+it('maps a nested Data child through its own input mapper', function () {
+    $compiler = new SpatieDataCompiler;
+
+    expect($compiler->compile(NestedMappedInputData::class)['properties']['account']['properties'])
+        ->toHaveKeys(['whitelabel_id', 'display_name']);
+
+    $dto = $compiler->hydrate(NestedMappedInputData::class, ['account' => ['whitelabel_id' => 9]]);
+
+    expect($dto->account->whitelabelId)->toBe(9)
+        ->and($dto->account->displayName)->toBe('anon');
 });
 
 it('maps input names via the global data.name_mapping_strategy.input config', function () {
