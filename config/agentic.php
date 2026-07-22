@@ -21,7 +21,7 @@ return [
     | exposing it. authorize() remains the standing gate on every surface.
     */
     'http' => [
-        'enabled' => false,
+        'enabled' => env('AGENTIC_HTTP_ENABLED', false),
         'prefix' => 'agentic',
         'middleware' => ['api'],
     ],
@@ -43,8 +43,8 @@ return [
     | must knock again.
     */
     'approvals' => [
-        'ttl' => 600,
-        'connection' => null,
+        'ttl' => env('AGENTIC_APPROVALS_TTL', 600),
+        'connection' => env('AGENTIC_APPROVALS_CONNECTION'),
     ],
 
     /*
@@ -59,8 +59,8 @@ return [
     | readOnly actions are excluded by default — opt in with #[AgentAction(audit: true)].
     */
     'audit' => [
-        'enabled' => true,
-        'connection' => null,
+        'enabled' => env('AGENTIC_AUDIT_ENABLED', true),
+        'connection' => env('AGENTIC_AUDIT_CONNECTION'),
     ],
 
 ];

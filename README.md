@@ -530,7 +530,7 @@ it('knocks for large refunds', function () {
 return [
     'discovery' => ['paths' => [app_path('Actions')]], // scanned for #[AgentAction]
     'http' => [
-        'enabled' => false,               // opt-in; set true and add your guard first
+        'enabled' => env('AGENTIC_HTTP_ENABLED', false), // opt-in; set true and add your guard first
         'prefix' => 'agentic',            // POST /agentic/actions/{name}
         'middleware' => ['api'],          // add your guard, e.g. 'auth:sanctum'
     ],
@@ -539,16 +539,26 @@ return [
         'exclude' => [],                      // hard denylist, beats everything
     ],
     'approvals' => [
-        'ttl' => 600,                      // seconds until knock/grant expires to deny
-        'connection' => null,              // null = default connection
+        'ttl' => env('AGENTIC_APPROVALS_TTL', 600),      // seconds until knock/grant expires to deny
+        'connection' => env('AGENTIC_APPROVALS_CONNECTION'), // null = default connection
     ],
     'redact' => [],                       // dot-path globs, e.g. '*.password'
     'audit' => [
-        'enabled' => true,
-        'connection' => null,              // null = default connection
+        'enabled' => env('AGENTIC_AUDIT_ENABLED', true),
+        'connection' => env('AGENTIC_AUDIT_CONNECTION'), // null = default connection
     ],
 ];
 ```
+
+The scalar, per-environment settings read from env vars (defaults shown above):
+
+| Env var | Config key |
+|---------|------------|
+| `AGENTIC_HTTP_ENABLED` | `http.enabled` |
+| `AGENTIC_APPROVALS_TTL` | `approvals.ttl` |
+| `AGENTIC_APPROVALS_CONNECTION` | `approvals.connection` |
+| `AGENTIC_AUDIT_ENABLED` | `audit.enabled` |
+| `AGENTIC_AUDIT_CONNECTION` | `audit.connection` |
 
 ## License
 
