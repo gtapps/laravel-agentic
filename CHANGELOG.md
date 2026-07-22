@@ -7,7 +7,7 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- **`Gtapps\LaravelAgentic\Pagination\PaginatedInput`** — a base input DTO for listing actions, compiling `page`/`perPage` into the schema. `NormalizeResult` now recognizes a paginated result (an Illuminate paginator, or a spatie `PaginatedDataCollection`/`CursorPaginatedDataCollection`) of `outputSchema` items and normalizes it to spatie/laravel-data's own `{data, links, meta}` envelope, with the paginator path pinned to `/` so links are deterministic across every surface.
+- **`Gtapps\LaravelAgentic\Pagination\PaginatedInput`** — a base input DTO for listing actions, compiling `page`/`perPage` into the schema. `NormalizeResult` now recognizes a paginated result (an Illuminate paginator, or a spatie `PaginatedDataCollection`/`CursorPaginatedDataCollection`) of `outputSchema` items and normalizes it to spatie/laravel-data's own `{data, links, meta}` envelope, with the paginator path pinned to `/` so links are deterministic across every surface. A **raw** paginator of Eloquent models or plain arrays is hydrated into the `outputSchema` type (via spatie's `collect()`); items that can't be shaped into it fall through to the `outputMismatch` policy.
 
 ### Changed
 

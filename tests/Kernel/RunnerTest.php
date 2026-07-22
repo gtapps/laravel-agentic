@@ -15,6 +15,7 @@ use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\PaginatedDataCollectionCardsAct
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\PaginatedMismatchStrictAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\PaginatedMismatchWarnAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\PaginatedNoSchemaAction;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\PaginatedRawArrayCardsAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\SimplePaginatedCardsAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\StrictOutputAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\AddressData;
@@ -114,6 +115,20 @@ it('normalizes a raw paginator of matching Data items into spatie\'s pagination 
         ->and($result->value['meta']['current_page'])->toBe(2)
         ->and($result->value['meta']['per_page'])->toBe(2)
         ->and($result->value['meta']['last_page'])->toBe(3)
+        ->and($result->value['meta']['total'])->toBe(5)
+        ->and($result->value['meta']['path'])->toBe('/');
+});
+
+it('hydrates a raw paginator of plain arrays into the outputSchema and normalizes it', function () {
+    Agentic::register([PaginatedRawArrayCardsAction::class]);
+
+    $result = Agentic::run('paginated-raw-array-cards', [], contextFor(Surface::Cli));
+
+    expect($result->value)->toBeArray()
+        ->and($result->value['data'])->toHaveCount(2)
+        ->and($result->value['data'][0])->toBe(['holder' => 'alice', 'secret' => 'shh'])
+        ->and($result->value['meta']['current_page'])->toBe(2)
+        ->and($result->value['meta']['per_page'])->toBe(2)
         ->and($result->value['meta']['total'])->toBe(5)
         ->and($result->value['meta']['path'])->toBe('/');
 });

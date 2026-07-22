@@ -7,6 +7,7 @@ use Gtapps\LaravelAgentic\Facades\Agentic;
 use Gtapps\LaravelAgentic\Surfaces\Jobs\RunAction;
 use Gtapps\LaravelAgentic\Surfaces\Mcp\AgenticServer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Gate;
 use Laravel\Ai\Tools\Request;
 use Laravel\Mcp\Facades\Mcp;
@@ -113,7 +114,7 @@ it('runs the same action definition identically through MCP, ai-tool, HTTP, CLI,
 
 const LIST_INVOICES_ARGS = ['page' => 2, 'perPage' => 2];
 
-it('normalizes a paginated listing action identically through MCP, ai-tool, and HTTP', function () {
+it('normalizes a paginated listing action identically through MCP, ai-tool, HTTP, and CLI', function () {
     $results = [];
 
     // ── MCP ────────────────────────────────────────────────────────────
@@ -134,8 +135,17 @@ it('normalizes a paginated listing action identically through MCP, ai-tool, and 
         ->assertOk()
         ->json('result');
 
+    // ── CLI (envelope printed to stdout) ────────────────────────────────
+    $exitCode = Artisan::call('agentic:action', [
+        'name' => 'list-invoices',
+        'json' => json_encode(LIST_INVOICES_ARGS),
+        '--as' => 1,
+    ]);
+    expect($exitCode)->toBe(0);
+    $results['cli'] = json_decode(trim(Artisan::output()), true);
+
     // ── Parity assertions ──────────────────────────────────────────────
-    foreach (['mcp', 'ai-tool', 'http'] as $surface) {
+    foreach (['mcp', 'ai-tool', 'http', 'cli'] as $surface) {
         expect($results[$surface])->toEqual($results['mcp']);
     }
 
@@ -157,14 +167,7 @@ it('normalizes a paginated listing action identically through MCP, ai-tool, and 
         'total' => 5,
     ]);
 
-    // ── CLI ────────────────────────────────────────────────────────────
-    $this->artisan('agentic:action', [
-        'name' => 'list-invoices',
-        'json' => json_encode(LIST_INVOICES_ARGS),
-        '--as' => 1,
-    ])->assertSuccessful();
-
-    // ── Job ──────────────────────────────────────────────────────────
+    // ── Job (returns void; audited like every other surface) ────────────
     RunAction::dispatchSync('list-invoices', LIST_INVOICES_ARGS, 1);
 
     expect(ActionLog::where('action', 'list-invoices')->where('status', 'ok')->count())->toBe(5);

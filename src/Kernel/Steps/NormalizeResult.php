@@ -10,6 +10,7 @@ use Illuminate\Pagination\AbstractCursorPaginator;
 use Illuminate\Pagination\AbstractPaginator;
 use Illuminate\Support\Facades\Log;
 use Spatie\LaravelData\CursorPaginatedDataCollection;
+use Spatie\LaravelData\Exceptions\CannotCreateData;
 use Spatie\LaravelData\PaginatedDataCollection;
 
 /**
@@ -51,10 +52,12 @@ class NormalizeResult
     /**
      * Delegate paginated results to spatie/laravel-data's own envelope
      * (TransformedDataCollectableResolver::transformPaginator) instead of
-     * building one ourselves. Returns null when the result isn't a paginated
-     * collection of $expected items, so the caller falls through to the
-     * mismatch policy. The paginator path is pinned to '/' so link URLs are
-     * deterministic across every surface.
+     * building one ourselves. A raw Illuminate paginator of models/arrays is
+     * hydrated into $expected via spatie's collect(); returns null when the
+     * result isn't a paginator, or when its items can't be shaped into
+     * $expected, so the caller falls through to the mismatch policy. The
+     * paginator path is pinned to '/' so link URLs are deterministic across
+     * every surface.
      *
      * @return array<string, mixed>|null
      */
@@ -71,19 +74,18 @@ class NormalizeResult
         }
 
         if ($result instanceof AbstractPaginator || $result instanceof AbstractCursorPaginator) {
-            foreach ($result->items() as $item) {
-                if (! $item instanceof $expected) {
-                    return null;
-                }
-            }
-
             $result->withPath('/');
 
             $into = $result instanceof AbstractCursorPaginator
                 ? CursorPaginatedDataCollection::class
                 : PaginatedDataCollection::class;
 
-            return $expected::collect($result, $into)->toArray();
+            try {
+                return $expected::collect($result, $into)->toArray();
+            } catch (CannotCreateData) {
+                // Items aren't shaped like $expected — fall through to the mismatch policy.
+                return null;
+            }
         }
 
         return null;

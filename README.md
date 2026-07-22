@@ -368,6 +368,13 @@ public function handle(ListInvoicesInput $input): mixed
 }
 ```
 
+You don't have to pre-wrap with `::collect()`: returning a **raw** Illuminate
+paginator of Eloquent models or plain arrays (e.g. `Invoice::paginate(...)`)
+works too — its items are hydrated into the declared `outputSchema` type for
+you. Items that can't be shaped into that type fall through to the action's
+`outputMismatch` policy (a raw paginator is passed through under `Warn`,
+throws under `Strict`).
+
 The result is normalized into spatie/laravel-data's own pagination
 envelope — the same `{data, links, meta}` shape `PaginatedDataCollection`
 already produces — with the paginator's path pinned to `/` so link URLs
@@ -375,6 +382,11 @@ already produces — with the paginator's path pinned to `/` so link URLs
 surface (MCP, ai-tool, HTTP, CLI, job) instead of reflecting whichever
 surface happened to run. Simple (`simplePaginate()`) and cursor
 pagination are both supported the same way.
+
+Those link URLs are **indicative**, not endpoints to dereference: they are
+pinned to `/` and carry only `page` (not `perPage` or your filters). Paginate
+by re-calling the action with structured `page`/`perPage` arguments — the one
+input every surface accepts — rather than following the URLs.
 
 ### Reusing FormRequest validation during migration
 
