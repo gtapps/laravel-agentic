@@ -22,19 +22,22 @@ class MakeActionCommand extends GeneratorCommand
 
     public function handle(): ?int
     {
+        $inputName = $this->qualifyClass($this->getNameInput()).'Input';
+        $inputPath = $this->getPath($inputName);
+
+        // Check the input up-front so a pre-existing input aborts before
+        // parent::handle() writes the action — otherwise we'd leave the action
+        // on disk while reporting failure.
+        if ($this->files->exists($inputPath) && ! $this->option('force')) {
+            $this->components->error('Action input already exists.');
+
+            return self::FAILURE;
+        }
+
         // handle()'s return is cast with (int): `false`/`null` become exit
         // code 0, `true` becomes 1 — so success paths must return null, and
         // failure paths must return self::FAILURE, never a bare bool.
         if (parent::handle() === false) {
-            return self::FAILURE;
-        }
-
-        $inputName = $this->qualifyClass($this->getNameInput()).'Input';
-        $inputPath = $this->getPath($inputName);
-
-        if ($this->files->exists($inputPath) && ! $this->option('force')) {
-            $this->components->error('Action input already exists.');
-
             return self::FAILURE;
         }
 

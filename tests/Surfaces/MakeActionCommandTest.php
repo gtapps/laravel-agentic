@@ -55,6 +55,18 @@ it('scaffolds a paginated listing action', function () {
         ->toContain('LengthAwarePaginator');
 });
 
+it('generates a discoverable paginated action whose schema compiles', function () {
+    $this->artisan('agentic:make-action', ['name' => 'GeneratorTest/Foo', '--paginated' => true])
+        ->assertSuccessful();
+
+    config(['agentic.discovery.paths' => [app_path('Actions/GeneratorTest')]]);
+
+    $definition = app(Registry::class)->find('foo');
+
+    expect($definition)->not->toBeNull();
+    expect($definition->inputSchema['properties'])->toHaveKeys(['page', 'perPage']);
+});
+
 it('generates a discoverable action', function () {
     $this->artisan('agentic:make-action', ['name' => 'GeneratorTest/Foo'])->assertSuccessful();
 
