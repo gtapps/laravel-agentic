@@ -3,7 +3,7 @@
 All notable changes to `gtapps/laravel-agentic` are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.0.4] - 2026-07-22
 
 ### Added
 
@@ -13,6 +13,10 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - **Behavior note:** an action with `outputSchema` whose handler already returned a matching paginator previously fell through to `Mismatch::Warn` (a logged warning, raw paginator passed through). It now gets the pagination envelope instead. No shipped action relied on the old behavior.
+
+### Upgrading
+
+No config or migration changes required.
 
 ## [0.0.3] - 2026-07-21
 
