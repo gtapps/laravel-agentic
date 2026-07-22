@@ -14,6 +14,7 @@ use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\MapArrayData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\NestedArrayData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\NestedData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\NullableData;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\PaginatedFilterData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\PlainArrayData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\PureEnumData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\ScalarArrayData;
@@ -117,6 +118,16 @@ dataset('schema fixtures', [
         ],
         'additionalProperties' => false,
         'required' => ['quantity', 'title', 'code', 'email', 'slug'],
+    ]],
+    'paginated filter' => [PaginatedFilterData::class, [
+        'type' => 'object',
+        'properties' => [
+            'status' => ['type' => 'string'],
+            'page' => ['type' => 'integer', 'minimum' => 1, 'default' => 1],
+            'perPage' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 100, 'default' => 15],
+        ],
+        'additionalProperties' => false,
+        'required' => ['status'],
     ]],
 ]);
 
@@ -275,6 +286,24 @@ it('casts enums and applies defaults on hydration', function () {
     expect($defaults->name)->toBe('anonymous')
         ->and($defaults->limit)->toBe(10)
         ->and($defaults->suit)->toBe(Suit::Hearts);
+});
+
+it('applies page/perPage defaults on a paginated input subclass', function () {
+    $dto = (new SpatieDataCompiler)->hydrate(PaginatedFilterData::class, ['status' => 'open']);
+
+    expect($dto->status)->toBe('open')
+        ->and($dto->page)->toBe(1)
+        ->and($dto->perPage)->toBe(15);
+});
+
+it('rejects out-of-range perPage on a paginated input subclass', function () {
+    $compiler = new SpatieDataCompiler;
+
+    expect(fn () => $compiler->hydrate(PaginatedFilterData::class, ['status' => 'open', 'perPage' => 0]))
+        ->toThrow(ValidationException::class);
+
+    expect(fn () => $compiler->hydrate(PaginatedFilterData::class, ['status' => 'open', 'perPage' => 101]))
+        ->toThrow(ValidationException::class);
 });
 
 it('hydrates absent nullable fields to null', function () {

@@ -3,6 +3,16 @@
 All notable changes to `gtapps/laravel-agentic` are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **`Gtapps\LaravelAgentic\Pagination\PaginatedInput`** — a base input DTO for listing actions, compiling `page`/`perPage` into the schema. `NormalizeResult` now recognizes a paginated result (an Illuminate paginator, or a spatie `PaginatedDataCollection`/`CursorPaginatedDataCollection`) of `outputSchema` items and normalizes it to spatie/laravel-data's own `{data, links, meta}` envelope, with the paginator path pinned to `/` so links are deterministic across every surface.
+
+### Changed
+
+- **Behavior note:** an action with `outputSchema` whose handler already returned a matching paginator previously fell through to `Mismatch::Warn` (a logged warning, raw paginator passed through). It now gets the pagination envelope instead. No shipped action relied on the old behavior.
+
 ## [0.0.3] - 2026-07-21
 
 ### Changed

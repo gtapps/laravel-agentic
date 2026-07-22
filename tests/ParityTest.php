@@ -110,3 +110,62 @@ it('runs the same action definition identically through MCP, ai-tool, HTTP, CLI,
     expect(ActionLog::where('status', 'approval_required')->count())->toBe(5)
         ->and(Approval::where('status', 'consumed')->count())->toBe(5);
 });
+
+const LIST_INVOICES_ARGS = ['page' => 2, 'perPage' => 2];
+
+it('normalizes a paginated listing action identically through MCP, ai-tool, and HTTP', function () {
+    $results = [];
+
+    // ── MCP ────────────────────────────────────────────────────────────
+    $mcp = $this->actingAs($this->user)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'list-invoices', 'arguments' => LIST_INVOICES_ARGS],
+    ]);
+    $results['mcp'] = json_decode($mcp->json('result.content.0.text'), true);
+
+    // ── laravel/ai tool ────────────────────────────────────────────────
+    auth()->setUser($this->user);
+    $adapter = collect(iterator_to_array(Agentic::tools(['list-invoices']), false))->sole();
+    $results['ai-tool'] = json_decode((string) $adapter->handle(new Request(LIST_INVOICES_ARGS)), true);
+
+    // ── HTTP (GET — allowed for readOnly actions) ───────────────────────
+    $results['http'] = $this->actingAs($this->user)
+        ->getJson('/agentic/actions/list-invoices?'.http_build_query(LIST_INVOICES_ARGS))
+        ->assertOk()
+        ->json('result');
+
+    // ── Parity assertions ──────────────────────────────────────────────
+    foreach (['mcp', 'ai-tool', 'http'] as $surface) {
+        expect($results[$surface])->toEqual($results['mcp']);
+    }
+
+    expect($results['mcp']['data'])->toEqual([
+        ['id' => 3, 'customer' => 'Initech', 'total' => 75.25],
+        ['id' => 4, 'customer' => 'Umbrella', 'total' => 500.0],
+    ]);
+    expect($results['mcp']['meta'])->toEqual([
+        'current_page' => 2,
+        'first_page_url' => '/?page=1',
+        'from' => 3,
+        'last_page' => 3,
+        'last_page_url' => '/?page=3',
+        'next_page_url' => '/?page=3',
+        'path' => '/',
+        'per_page' => 2,
+        'prev_page_url' => '/?page=1',
+        'to' => 4,
+        'total' => 5,
+    ]);
+
+    // ── CLI ────────────────────────────────────────────────────────────
+    $this->artisan('agentic:action', [
+        'name' => 'list-invoices',
+        'json' => json_encode(LIST_INVOICES_ARGS),
+        '--as' => 1,
+    ])->assertSuccessful();
+
+    // ── Job ──────────────────────────────────────────────────────────
+    RunAction::dispatchSync('list-invoices', LIST_INVOICES_ARGS, 1);
+
+    expect(ActionLog::where('action', 'list-invoices')->where('status', 'ok')->count())->toBe(5);
+});
