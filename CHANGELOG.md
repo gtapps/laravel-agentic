@@ -3,6 +3,16 @@
 All notable changes to `gtapps/laravel-agentic` are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.0.5] - 2026-07-22
+
+### Fixed
+
+- **schema: compiled keys now honor spatie input name mappers** — `SpatieDataCompiler` previously emitted the raw PHP property name as both the schema key and the `required` entry, ignoring a DTO's `#[MapInputName]` attribute or the global `data.name_mapping_strategy.input`. Advertised schema keys now match what `validateAndCreate()` actually accepts, including for nested `Data` children.
+
+### Upgrading
+
+No config or migration changes required.
+
 ## [0.0.4] - 2026-07-22
 
 ### Added
