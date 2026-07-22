@@ -10,7 +10,9 @@ use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\ConstraintsData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\DefaultsData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\EnumArrayData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\EnumData;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\GlobalMappedInputData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\MapArrayData;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\MappedInputData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\NestedArrayData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\NestedData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\NullableData;
@@ -23,6 +25,7 @@ use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\SelfRefData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\Suit;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\UnionData;
 use Illuminate\Validation\ValidationException;
+use Spatie\LaravelData\Mappers\SnakeCaseMapper;
 
 const ADDRESS_SCHEMA = [
     'type' => 'object',
@@ -128,6 +131,15 @@ dataset('schema fixtures', [
         ],
         'additionalProperties' => false,
         'required' => ['status'],
+    ]],
+    'input name mapper' => [MappedInputData::class, [
+        'type' => 'object',
+        'properties' => [
+            'whitelabel_id' => ['type' => 'integer'],
+            'display_name' => ['type' => 'string', 'default' => 'anon'],
+        ],
+        'additionalProperties' => false,
+        'required' => ['whitelabel_id'],
     ]],
 ]);
 
@@ -332,4 +344,28 @@ it('rejects constraint violations on hydration', function () {
         'email' => 'not-an-email',
         'slug' => 'ok-slug',
     ]))->toThrow(ValidationException::class);
+});
+
+it('hydrates the schema-advertised mapped keys and rejects raw PHP names', function () {
+    $compiler = new SpatieDataCompiler;
+
+    $dto = $compiler->hydrate(MappedInputData::class, ['whitelabel_id' => 7]);
+
+    expect($dto->whitelabelId)->toBe(7)
+        ->and($dto->displayName)->toBe('anon');
+
+    expect(fn () => $compiler->hydrate(MappedInputData::class, ['whitelabelId' => 7]))
+        ->toThrow(ValidationException::class);
+});
+
+it('maps input names via the global data.name_mapping_strategy.input config', function () {
+    config(['data.name_mapping_strategy.input' => SnakeCaseMapper::class]);
+
+    $compiler = new SpatieDataCompiler;
+
+    expect($compiler->compile(GlobalMappedInputData::class)['properties'])
+        ->toHaveKey('whitelabel_id');
+
+    expect($compiler->hydrate(GlobalMappedInputData::class, ['whitelabel_id' => 7])->whitelabelId)
+        ->toBe(7);
 });

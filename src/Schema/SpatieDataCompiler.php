@@ -15,6 +15,7 @@ use Spatie\LaravelData\Attributes\Validation\Max;
 use Spatie\LaravelData\Attributes\Validation\Min;
 use Spatie\LaravelData\Attributes\Validation\Regex;
 use Spatie\LaravelData\Data;
+use Spatie\LaravelData\Support\DataConfig;
 
 /**
  * @internal v1 SchemaCompiler implementation on spatie/laravel-data.
@@ -169,6 +170,7 @@ class SpatieDataCompiler implements SchemaCompiler
 
         $reflection = new ReflectionClass($dtoClass);
         $defaults = $this->constructorDefaults($reflection);
+        $mappedNames = $this->inputMappedNames($dtoClass);
 
         $properties = [];
         $required = [];
@@ -179,6 +181,7 @@ class SpatieDataCompiler implements SchemaCompiler
             }
 
             $schema = $this->compileProperty($dtoClass, $property);
+            $key = $mappedNames[$property->getName()];
 
             $hasDefault = array_key_exists($property->getName(), $defaults)
                 || $property->hasDefaultValue();
@@ -187,10 +190,10 @@ class SpatieDataCompiler implements SchemaCompiler
                 $default = $defaults[$property->getName()] ?? $property->getDefaultValue();
                 $schema['default'] = $default instanceof BackedEnum ? $default->value : $default;
             } elseif (! $property->getType()?->allowsNull()) {
-                $required[] = $property->getName();
+                $required[] = $key;
             }
 
-            $properties[$property->getName()] = $schema;
+            $properties[$key] = $schema;
         }
 
         unset($this->compiling[$dtoClass]);
@@ -423,5 +426,24 @@ class SpatieDataCompiler implements SchemaCompiler
         }
 
         return $defaults;
+    }
+
+    /**
+     * Wire-facing input name per raw PHP property name, honoring spatie's input
+     * name mappers (attribute or the global data.name_mapping_strategy.input) so
+     * advertised schema keys match what validateAndCreate() accepts. Raw name
+     * when no mapper is set — a no-op for mapper-less DTOs.
+     *
+     * @return array<string, string>
+     */
+    protected function inputMappedNames(string $dtoClass): array
+    {
+        $names = [];
+
+        foreach (app(DataConfig::class)->getDataClass($dtoClass)->properties as $property) {
+            $names[$property->name] = $property->inputMappedName ?? $property->name;
+        }
+
+        return $names;
     }
 }
