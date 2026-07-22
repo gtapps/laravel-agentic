@@ -11,6 +11,7 @@ use Gtapps\LaravelAgentic\Surfaces\Cli\CacheCommand;
 use Gtapps\LaravelAgentic\Surfaces\Cli\ClearCommand;
 use Gtapps\LaravelAgentic\Surfaces\Cli\DenyCommand;
 use Gtapps\LaravelAgentic\Surfaces\Cli\ListCommand;
+use Gtapps\LaravelAgentic\Surfaces\Cli\MakeActionCommand;
 use Illuminate\Support\ServiceProvider;
 
 class AgenticServiceProvider extends ServiceProvider
@@ -55,6 +56,7 @@ class AgenticServiceProvider extends ServiceProvider
                 ApproveCommand::class,
                 DenyCommand::class,
                 ActionCommand::class,
+                MakeActionCommand::class,
             ]);
         }
     }

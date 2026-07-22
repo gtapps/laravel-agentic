@@ -1,0 +1,7 @@
+<?php
+
+namespace {{ namespace }};
+
+use Gtapps\LaravelAgentic\Pagination\PaginatedInput;
+
+class {{ class }} extends PaginatedInput {}

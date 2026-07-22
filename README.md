@@ -388,6 +388,22 @@ pinned to `/` and carry only `page` (not `perPage` or your filters). Paginate
 by re-calling the action with structured `page`/`perPage` arguments — the one
 input every surface accepts — rather than following the URLs.
 
+### Scaffolding a new action
+
+`agentic:make-action` generates a blank action class and its paired input DTO,
+following the same conventions as `make:model`/`make:controller`:
+
+```bash
+php artisan agentic:make-action RefundInvoice
+php artisan agentic:make-action Invoices/ListInvoices --paginated
+```
+
+`--paginated` generates an input extending `PaginatedInput` and a `handle()`
+returning a paginator. `--force` overwrites existing files. This is a blank
+scaffold only — it does not introspect an existing route or `laravel/mcp`
+tool; fill in the generated `description`, validation, `authorize()`, and
+`handle()` body yourself.
+
 ### Reusing FormRequest validation during migration
 
 Porting an existing route into an action doesn't require re-expressing a
