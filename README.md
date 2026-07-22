@@ -342,6 +342,77 @@ class ListInvoicesInput extends Data
 }
 ```
 
+### Listing actions & pagination
+
+Extend `Gtapps\LaravelAgentic\Pagination\PaginatedInput` for a listing
+action's input — it compiles `page` (default `1`) and `perPage` (default
+`15`, max `100`) into the schema for you:
+
+```php
+class ListInvoicesInput extends PaginatedInput
+{
+    // add your own filters via a constructor; page/perPage still apply
+}
+```
+
+Wire names are `page`/`perPage` (e.g. an HTTP GET reads `?page=2&perPage=50`).
+Return an Illuminate paginator (or a spatie `PaginatedDataCollection`) of
+`outputSchema` items from `handle()`:
+
+```php
+public function handle(ListInvoicesInput $input): mixed
+{
+    return InvoiceSummary::collect(
+        Invoice::query()->paginate($input->perPage, page: $input->page)
+    );
+}
+```
+
+You don't have to pre-wrap with `::collect()`: returning a **raw** Illuminate
+paginator of Eloquent models or plain arrays (e.g. `Invoice::paginate(...)`)
+works too — its items are hydrated into the declared `outputSchema` type for
+you. Items that can't be shaped into that type fall through to the action's
+`outputMismatch` policy (a raw paginator is passed through under `Warn`,
+throws under `Strict`).
+
+The result is normalized into spatie/laravel-data's own pagination
+envelope — the same `{data, links, meta}` shape `PaginatedDataCollection`
+already produces — with the paginator's path pinned to `/` so link URLs
+(`first_page_url`, `next_page_url`, ...) are deterministic across every
+surface (MCP, ai-tool, HTTP, CLI, job) instead of reflecting whichever
+surface happened to run. Simple (`simplePaginate()`) and cursor
+pagination are both supported the same way.
+
+Those link URLs are **indicative**, not endpoints to dereference: they are
+pinned to `/` and carry only `page` (not `perPage` or your filters). Paginate
+by re-calling the action with structured `page`/`perPage` arguments — the one
+input every surface accepts — rather than following the URLs.
+
+### Reusing FormRequest validation during migration
+
+Porting an existing route into an action doesn't require re-expressing a
+FormRequest's rules as spatie attributes. spatie/laravel-data calls a
+static `rules()` method on the Data class if one exists, merging it into
+validation:
+
+```php
+class StoreInvoiceInput extends Data
+{
+    public function __construct(public int $invoiceId, public float $amount) {}
+
+    /** Reuse the REST rules as the single source of truth during migration. */
+    public static function rules(): array
+    {
+        return (new StoreInvoiceRequest)->rules();
+    }
+}
+```
+
+Two caveats: rules added this way run during validation but do **not**
+appear in the compiled JSON Schema the model sees, and a FormRequest that
+touches `$this->route()` or `$this->user()` won't port — extract those
+rules first.
+
 ## Coming from laravel/mcp
 
 If you're porting an existing `laravel/mcp` tool server, the shapes map

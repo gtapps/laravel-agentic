@@ -119,6 +119,23 @@ cache. The test for new surface code: if a framework already does it — or
 plausibly will next release — call theirs. The value added is always the funnel
 into the Runner, never a second implementation.
 
+### Delegation check (package-wide, not just surfaces)
+
+Before writing any code that shapes, validates, serializes, paginates, or
+transforms data — in any layer, Kernel included — check the dependencies
+first: laravel/framework (illuminate/*), laravel/mcp, laravel/ai, and
+spatie/laravel-data. Use laravel-boost's `search-docs` MCP tool (Boost is a
+dev dependency; it serves version-matched docs for exactly these packages)
+as the first stop, and grep vendor/ directly when docs are inconclusive.
+If a dependency already implements the behavior — or plausibly will next
+release — call theirs. This package adds only what lives in none of them:
+the Runner funnel, identity discipline, durable cross-surface approvals +
+audit, and the compile-once schema. A plan that hand-builds a data shape a
+dependency already emits is wrong by default — every plan touching such
+logic must cite the vendor file:line it delegates to, or prove the
+behavior absent. Example: pagination envelopes are spatie's
+`TransformedDataCollectableResolver`, not ours (`NormalizeResult`).
+
 ### Approvals & audit (`src/Approvals/`, `src/Audit/`)
 
 Grants are keyed on `sha256(action + canonicalized args)` (arg order never

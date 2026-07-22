@@ -7,13 +7,23 @@ use Gtapps\LaravelAgentic\Exceptions\ActionNotFound;
 use Gtapps\LaravelAgentic\Exceptions\OutputSchemaMismatch;
 use Gtapps\LaravelAgentic\Facades\Agentic;
 use Gtapps\LaravelAgentic\Kernel\ContextFactory;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\CardData;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\CliOnlyAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\FallbackOutputAction;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\PaginatedCardsAction;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\PaginatedDataCollectionCardsAction;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\PaginatedMismatchStrictAction;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\PaginatedMismatchWarnAction;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\PaginatedNoSchemaAction;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\PaginatedRawArrayCardsAction;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\SimplePaginatedCardsAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\StrictOutputAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Schema\AddressData;
 use Illuminate\Auth\GenericUser;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Workbench\App\Actions\RefundResult;
 
@@ -92,4 +102,84 @@ it('replaces mismatched results via outputFallback under outputMismatch fallback
 
     expect($result->value)->toBeInstanceOf(AddressData::class)
         ->and($result->value->street)->toBe('fallback street');
+});
+
+it('normalizes a raw paginator of matching Data items into spatie\'s pagination envelope', function () {
+    Agentic::register([PaginatedCardsAction::class]);
+
+    $result = Agentic::run('paginated-cards', [], contextFor(Surface::Cli));
+
+    expect($result->value)->toBeArray()
+        ->and($result->value['data'])->toHaveCount(2)
+        ->and($result->value['data'][0])->toBe(['holder' => 'alice', 'secret' => 'shh'])
+        ->and($result->value['meta']['current_page'])->toBe(2)
+        ->and($result->value['meta']['per_page'])->toBe(2)
+        ->and($result->value['meta']['last_page'])->toBe(3)
+        ->and($result->value['meta']['total'])->toBe(5)
+        ->and($result->value['meta']['path'])->toBe('/');
+});
+
+it('hydrates a raw paginator of plain arrays into the outputSchema and normalizes it', function () {
+    Agentic::register([PaginatedRawArrayCardsAction::class]);
+
+    $result = Agentic::run('paginated-raw-array-cards', [], contextFor(Surface::Cli));
+
+    expect($result->value)->toBeArray()
+        ->and($result->value['data'])->toHaveCount(2)
+        ->and($result->value['data'][0])->toBe(['holder' => 'alice', 'secret' => 'shh'])
+        ->and($result->value['meta']['current_page'])->toBe(2)
+        ->and($result->value['meta']['per_page'])->toBe(2)
+        ->and($result->value['meta']['total'])->toBe(5)
+        ->and($result->value['meta']['path'])->toBe('/');
+});
+
+it('normalizes an already-built PaginatedDataCollection the same way', function () {
+    Agentic::register([PaginatedDataCollectionCardsAction::class]);
+
+    $result = Agentic::run('paginated-data-collection-cards', [], contextFor(Surface::Cli));
+
+    expect($result->value)->toBeArray()
+        ->and($result->value['data'])->toHaveCount(2)
+        ->and($result->value['data'][0])->toBe(['holder' => 'alice', 'secret' => 'shh'])
+        ->and($result->value['meta']['current_page'])->toBe(2)
+        ->and($result->value['meta']['total'])->toBe(5);
+});
+
+it('normalizes a simple (non-length-aware) paginator into the envelope too', function () {
+    Agentic::register([SimplePaginatedCardsAction::class]);
+
+    $result = Agentic::run('simple-paginated-cards', [], contextFor(Surface::Cli));
+
+    expect($result->value)->toBeArray()
+        ->and($result->value['data'])->toHaveCount(2)
+        ->and($result->value['data'][0])->toBe(['holder' => 'alice', 'secret' => 'shh'])
+        ->and($result->value['meta']['current_page'])->toBe(1)
+        ->and($result->value['meta']['per_page'])->toBe(2);
+});
+
+it('throws under outputMismatch strict when a paginator holds items of the wrong type', function () {
+    Agentic::register([PaginatedMismatchStrictAction::class]);
+
+    Agentic::run('paginated-mismatch-strict', [], contextFor(Surface::Cli));
+})->throws(OutputSchemaMismatch::class);
+
+it('warns and passes the raw paginator through under outputMismatch warn when items are the wrong type', function () {
+    Log::spy();
+
+    Agentic::register([PaginatedMismatchWarnAction::class]);
+
+    $result = Agentic::run('paginated-mismatch-warn', [], contextFor(Surface::Cli));
+
+    expect($result->value)->toBeInstanceOf(LengthAwarePaginator::class);
+
+    Log::shouldHaveReceived('warning')->once();
+});
+
+it('leaves a paginator untouched when no outputSchema is declared', function () {
+    Agentic::register([PaginatedNoSchemaAction::class]);
+
+    $result = Agentic::run('paginated-no-schema', [], contextFor(Surface::Cli));
+
+    expect($result->value)->toBeInstanceOf(LengthAwarePaginator::class)
+        ->and($result->value->items()[0])->toBeInstanceOf(CardData::class);
 });
