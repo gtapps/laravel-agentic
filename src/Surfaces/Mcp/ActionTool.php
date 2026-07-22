@@ -65,9 +65,15 @@ class ActionTool extends Tool
     /**
      * Full schema fidelity: the host sees exactly the compiled schema
      * (compact when declared), not a builder approximation.
+     *
+     * `properties` is coerced to a stdClass: PHP encodes an empty array as
+     * JSON `[]`, which strict MCP clients reject where `{}` is required.
      */
     public function toArray(): array
     {
-        return ['inputSchema' => $this->definition->agentSchema()] + parent::toArray();
+        $schema = $this->definition->agentSchema();
+        $schema['properties'] = (object) ($schema['properties'] ?? []);
+
+        return ['inputSchema' => $schema] + parent::toArray();
     }
 }

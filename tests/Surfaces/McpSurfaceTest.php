@@ -6,6 +6,7 @@ use Gtapps\LaravelAgentic\Facades\Agentic;
 use Gtapps\LaravelAgentic\Schema\SchemaCompiler;
 use Gtapps\LaravelAgentic\Surfaces\Mcp\AgenticServer;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\PredicateAction;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\StrictOutputAction;
 use Illuminate\Auth\GenericUser;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Gate;
@@ -50,6 +51,16 @@ it('lists actions over a real MCP handshake with compiled-schema fidelity', func
     expect($refund)->not->toBeNull()
         ->and($refund['description'])->toBe('Refund an invoice to the original payment method.')
         ->and($refund['inputSchema'])->toBe(app(SchemaCompiler::class)->compile(CompactRefundInput::class));
+});
+
+it('encodes an empty input schema as a JSON object, not an array, for strict MCP clients', function () {
+    Agentic::register([StrictOutputAction::class]);
+
+    $response = mcpCall('tools/list', user: new GenericUser(['id' => 1]));
+
+    expect($response->getContent())
+        ->toContain('"properties":{}')
+        ->not->toContain('"properties":[]');
 });
 
 it('restricts the unauthenticated tier to the allowlist, in tools/list and tools/call', function () {
