@@ -1,13 +1,13 @@
 # laravel-agentic
 
+![Downloads](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/gtapps/laravel-agentic/_gh_traffic_stats/.github/badges/clones.json)
+
 **An agent-native action layer for Laravel. Define an action once; expose it
 to humans and agents everywhere — with approvals and audit built in.**
 
 laravel/mcp and laravel/ai give your agents *ability*; laravel-agentic gives
 you *control* over that ability — those packages are the wiring, this is the
 breaker panel and the meter.
-
-![Downloads](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/gtapps/laravel-agentic/_gh_traffic_stats/.github/badges/clones.json)
 
 ```
 WITHOUT — raw laravel/mcp + laravel/ai
