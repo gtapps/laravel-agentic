@@ -1,0 +1,18 @@
+<?php
+
+namespace {{ namespace }};
+
+use Gtapps\LaravelAgentic\Attributes\AgentAction;
+
+#[AgentAction(
+    name: '{{ actionName }}',
+    description: '',
+    readOnly: false,
+)]
+class {{ class }}
+{
+    public function handle({{ inputClass }} $input): mixed
+    {
+        //
+    }
+}

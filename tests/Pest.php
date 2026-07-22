@@ -33,6 +33,7 @@ uses(TestCase::class)->in(
     __DIR__.'/Surfaces/CliSurfaceTest.php',
     __DIR__.'/Surfaces/HttpRegistrationTest.php',
     __DIR__.'/Surfaces/JobSurfaceTest.php',
+    __DIR__.'/Surfaces/MakeActionCommandTest.php',
     __DIR__.'/Surfaces/McpSurfaceTest.php',
 );
 

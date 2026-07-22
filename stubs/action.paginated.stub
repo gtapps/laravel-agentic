@@ -1,0 +1,19 @@
+<?php
+
+namespace {{ namespace }};
+
+use Gtapps\LaravelAgentic\Attributes\AgentAction;
+use Illuminate\Pagination\LengthAwarePaginator;
+
+#[AgentAction(
+    name: '{{ actionName }}',
+    description: '',
+    readOnly: true,
+)]
+class {{ class }}
+{
+    public function handle({{ inputClass }} $input): LengthAwarePaginator
+    {
+        //
+    }
+}
