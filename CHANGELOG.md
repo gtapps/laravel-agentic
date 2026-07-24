@@ -3,6 +3,16 @@
 All notable changes to `gtapps/laravel-agentic` are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.0.7] - 2026-07-24
+
+### Changed
+
+- **config: per-environment scalars now read from env vars** — `http.enabled`, `approvals.ttl`, `approvals.connection`, `audit.enabled`, and `audit.connection` are now wired to `AGENTIC_HTTP_ENABLED`, `AGENTIC_APPROVALS_TTL`, `AGENTIC_APPROVALS_CONNECTION`, `AGENTIC_AUDIT_ENABLED`, and `AGENTIC_AUDIT_CONNECTION` respectively, falling back to the prior hardcoded defaults.
+
+### Upgrading
+
+1. **Republish the config** — republish `config/agentic.php` with `--force`, or manually add the `env()` wiring for `http.enabled`, `approvals.ttl`, `approvals.connection`, `audit.enabled`, and `audit.connection` shown above, to pick up environment overrides.
+
 ## [0.0.6] - 2026-07-22
 
 ### Fixed
