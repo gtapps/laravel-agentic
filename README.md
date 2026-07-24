@@ -354,7 +354,10 @@ class ListInvoicesInput extends Data
 
 Extend `Gtapps\LaravelAgentic\Pagination\PaginatedInput` for a listing
 action's input — it compiles `page` (default `1`) and `perPage` (default
-`15`, max `100`) into the schema for you:
+`15`, max `100`) into the schema for you. Out-of-range `perPage` is
+**rejected** with a validation error, not clamped to the max — see
+["Validation rejects; it doesn't clamp"](#reusing-formrequest-validation-during-migration)
+if you're porting a tolerant legacy endpoint:
 
 ```php
 class ListInvoicesInput extends PaginatedInput
@@ -436,6 +439,41 @@ Two caveats: rules added this way run during validation but do **not**
 appear in the compiled JSON Schema the model sees, and a FormRequest that
 touches `$this->route()` or `$this->user()` won't port — extract those
 rules first.
+
+#### Validation rejects; it doesn't clamp
+
+A common manual pagination clamp:
+
+```php
+public function perPage(int $default = 100, int $max = 250): int
+{
+    return max(1, min($max, $this->integer('per_page', $default)));
+}
+```
+
+translates naturally to a `#[Max(250)]` attribute on the input DTO — but
+that's a behavior change, not a like-for-like port. Validation attributes
+**reject** out-of-range input with a `ValidationException` (a field error
+surfaced on every surface); they don't silently coerce it to the bound. A
+caller passing `per_page=9999` gets a structured error back, not a
+silently-substituted `250`.
+
+This is the deliberate choice for an agent-facing action (see the audited
+["validation failures" outcome](#audit)): the agent gets clear, actionable
+feedback instead of a result it didn't ask for. If you need the legacy
+tolerant behavior, drop the attribute and clamp inside `handle()` instead:
+
+```php
+public function handle(ListInvoicesInput $input): mixed
+{
+    $perPage = max(1, min(250, $input->perPage));
+    // ...
+}
+```
+
+The tradeoff: a bound enforced only in `handle()` is invisible to the JSON
+Schema the agent sees, the same caveat that already applies to
+`rules()`-only constraints above.
 
 ## Coming from laravel/mcp
 
