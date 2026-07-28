@@ -1,0 +1,4 @@
+interface:
+  display_name: "Docs Drift"
+  short_description: "Audit released or unreleased changes against docs"
+  default_prompt: "Use $docs-drift to check whether the latest release or current unreleased changes are accurately reflected in laravel-agentic documentation."
