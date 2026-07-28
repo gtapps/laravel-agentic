@@ -20,7 +20,7 @@ Tests run via Orchestra Testbench on any PHP ≥ 8.3 (composer floor); the suite
 is green on both 8.4 and the local default 8.5, so plain `php` works:
 
 ```bash
-php vendor/bin/pest                    # full suite (~120 tests)
+php vendor/bin/pest                    # full suite
 php vendor/bin/pest tests/Kernel/RunnerTest.php   # one file
 php vendor/bin/pest --filter "knocks"  # by name substring
 vendor/bin/pint                        # format (composer format)
@@ -47,9 +47,9 @@ The Runner wraps the whole pipeline so denials, approval knocks, and failures
 are audited alongside successes. Adding cross-cutting behavior means adding or
 editing a Step — never bypassing the pipeline from a surface.
 
-**Approval is consent, never escalation:** `ApprovalGate` runs *after*
+**Approval is consent, never escalation:** `ApprovalGate` runs _after_
 `Authorize`, so an approval can never override a policy denial. The grant is
-consumed *before* `Execute`, so a handler failure after consume makes the
+consumed _before_ `Execute`, so a handler failure after consume makes the
 retry knock again rather than double-execute.
 
 ### Definitions, registry, caching
@@ -76,7 +76,7 @@ reused for the MCP tool schema, ai-tool schema, HTTP validation, and CLI
 parsing — so schema dialects can't drift between surfaces. An optional
 compact `agentInputSchema` is what models see (token economy) while the full
 schema still validates; `Registry::lintCoherence()` enforces at registration
-that every field the full schema *requires* exists in the compact one.
+that every field the full schema _requires_ exists in the compact one.
 
 ### Context is built explicitly, never ambient
 
@@ -123,7 +123,7 @@ into the Runner, never a second implementation.
 
 Before writing any code that shapes, validates, serializes, paginates, or
 transforms data — in any layer, Kernel included — check the dependencies
-first: laravel/framework (illuminate/*), laravel/mcp, laravel/ai, and
+first: laravel/framework (illuminate/\*), laravel/mcp, laravel/ai, and
 spatie/laravel-data. Use laravel-boost's `search-docs` MCP tool (Boost is a
 dev dependency; it serves version-matched docs for exactly these packages)
 as the first stop, and grep vendor/ directly when docs are inconclusive.
@@ -142,14 +142,15 @@ Grants are keyed on `sha256(action + canonicalized args)` (arg order never
 matters), bound to the requesting principal, single-use, and expire to **deny**
 (`agentic.approvals.ttl`). A throwing `needsApproval` predicate fails **closed**.
 `ApprovalBroker` mediates; wire your own channel via the `ApprovalRequested`
-event (v1 ships no HTTP grant endpoint by design).
+event (the package ships no HTTP grant endpoint by design).
 
 `Recorder` writes an `agentic_action_log` row for every audited execution
 (success, failure, denial, or knock): non-`readOnly` actions by default,
 `readOnly` ones only when they opt in with `#[AgentAction(audit: true)]`.
 `Redactor` applies
-`agentic.redact` dot-path globs to **both** audit rows and approval payloads,
-so secrets never land in either. `ActionLog` and `Approval` each resolve
+`agentic.redact` dot-path globs to the **arguments** in both audit rows and
+approval payloads (the list is empty by default; the `error` column is stored
+as thrown). `ActionLog` and `Approval` each resolve
 their own connection via `agentic.audit.connection` / `agentic.approvals.connection`
 (`getConnectionName()`; both default `null` = the app's default connection),
 and the migrations honor the same keys.

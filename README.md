@@ -9,33 +9,46 @@
 </p>
 
 **An agent-native action layer for Laravel. Define an action once; expose it
-to humans and agents everywhere — with approvals and audit built in.**
+to humans and agents everywhere.**
 
-laravel/mcp and laravel/ai give your agents *ability*; laravel-agentic gives
-you *control* over that ability — those packages are the wiring, this is the
-breaker panel and the meter.
+Ship your agentic Laravel app faster: authorization, human approval, and an
+audit trail come built in, and behave the same on every surface.
 
 ```
-WITHOUT — raw laravel/mcp + laravel/ai
-──────────────────────────────────────
-dev writes "refund invoice"  ─┬─> MCP Tool class        (laravel/mcp schema dialect, authz ✓, log ✗)
-        (× 4, by hand)        ├─> laravel/ai tool class (different schema dialect, authz ✓, log ✗)
-                              ├─> Controller+FormRequest (3rd schema dialect, authz ✓, log ✓)
-                              └─> Artisan command        (manual args, authz forgotten ← drift)
+WITHOUT: raw laravel/mcp + laravel/ai
+─────────────────────────────────────
+dev writes "refund invoice"  ─┬─> MCP Tool class
+        (× 4, by hand)        ├─> laravel/ai tool class
+                              ├─> Controller+FormRequest
+                              └─> Artisan command
 
-agent decides to refund ──> MCP tool executes IMMEDIATELY ──> no ledger, no human in the loop
-                                                              "what did it do Tuesday?" = unanswerable
+agent refunds over MCP ──> tool executes IMMEDIATELY ──> no knock, no row
+                                                         "who approved that on Tuesday?" is answerable
+                                                         only from whatever you logged by hand
 
 WITH laravel-agentic
 ────────────────────
-dev writes ONE action class + input DTO      (schema, authorize(), needsApproval — defined once)
+dev writes ONE action class + input DTO      (schema, authorize(), needsApproval, defined once)
                         │
-  MCP · ai-tool · HTTP · CLI · job  ────>  same Runner pipeline (drift impossible)
+  MCP · ai-tool · HTTP · CLI · job  ────>  one Runner pipeline (nothing per-surface to drift)
                         │
 agent decides to refund ──> validate ──> policy check ──> KNOCK: human approves
                         ──> grant consumed (single-use, this exact args hash, expires if ignored)
                         ──> execute ──> audit row: who called, via which surface, who approved
 ```
+
+Three things you get once, for every surface at once:
+
+- **One definition, the surfaces you choose.** Schema compiled once and served
+  to MCP, ai-tool, HTTP, CLI, and queue: same validation, same `authorize()`,
+  same gate, no per-surface copy to drift.
+- **Consent that outlives the run.** A grant is durable, single-use, bound to
+  the principal _and_ the exact arguments, expires to deny, and is answered
+  out of band (artisan, Slack, your own endpoint) by someone who isn't the
+  caller. On the ai-tool surface it rides laravel/ai's own approval pause
+  rather than replacing it; the other four surfaces have no such hook to ride.
+- **One row per attempt.** Success, failure, denial, or knock: action,
+  surface, principal, args hash, who approved.
 
 ## Installation
 
@@ -51,7 +64,7 @@ php artisan vendor:publish --tag=agentic-config
 php artisan vendor:publish --tag=agentic-agents-md   # AGENTS.md for your repo
 ```
 
-Requires PHP 8.3+ and Laravel 12/13. Built on laravel/mcp, laravel/ai, and
+Requires PHP 8.3+ and Laravel 13. Built on laravel/mcp, laravel/ai, and
 spatie/laravel-data.
 
 ## Quickstart: one action, every surface
@@ -80,7 +93,7 @@ use Gtapps\LaravelAgentic\Enums\Surface;
     name: 'refund-invoice',
     description: 'Refund an invoice to the original payment method.', // written for the MODEL
     needsApproval: true,
-    surfaces: [Surface::Mcp, Surface::AiTool, Surface::Http, Surface::Cli, Surface::Job],
+    surfaces: [Surface::Mcp, Surface::AiTool, Surface::Http, Surface::Cli, Surface::Job], // define the ones you want, omit for all
 )]
 class RefundInvoice
 {
@@ -91,7 +104,7 @@ class RefundInvoice
 
     public function handle(RefundInvoiceInput $input, ActionContext $ctx): RefundResult
     {
-        // business logic — $ctx->caller() ∈ {mcp, ai-tool, http, cli, job}
+        // business logic; $ctx->caller() ∈ {mcp, ai-tool, http, cli, job}
     }
 }
 ```
@@ -106,18 +119,37 @@ Mcp::web('/mcp', AgenticServer::class)->middleware(['auth:sanctum']);
 ```
 
 That single definition is now callable, with the same validation,
-authorization, approval, and audit behavior, via:
+authorization, approval, and audit behavior (`tests/ParityTest.php` holds all
+five surfaces to it), via:
 
-| Surface | How |
-|---|---|
-| MCP | `tools/call refund-invoice` on the server above |
-| laravel/ai | `Agentic::tools()` inside any agent's `tools()` iterable — `Agentic::tools($only, $user)` pins an explicit principal instead of the ambient guard |
-| HTTP | `POST /agentic/actions/refund-invoice` (GET allowed for `readOnly`) — opt-in, off by default (`agentic.http.enabled`) |
-| CLI | `php artisan agentic:action refund-invoice '{"invoiceId":42,"amount":99.5}' --as=1` |
-| Queue | `RunAction::dispatch('refund-invoice', $args, $userId)` |
+| Surface    | How                                                                                                                                              |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| MCP        | `tools/call refund-invoice` on the server above                                                                                                  |
+| laravel/ai | `Agentic::tools()` inside any agent's `tools()` iterable; `Agentic::tools($only, $user)` pins an explicit principal instead of the ambient guard |
+| HTTP       | `POST /agentic/actions/refund-invoice` (GET allowed for `readOnly`); opt-in, off by default (`agentic.http.enabled`)                             |
+| CLI        | `php artisan agentic:action refund-invoice '{"invoiceId":42,"amount":99.5}' --as=1`                                                              |
+| Queue      | `RunAction::dispatch('refund-invoice', $args, $userId)`                                                                                          |
 
 `php artisan agentic:list` shows everything registered; `agentic:cache`
 compiles the manifest like `route:cache`.
+
+### Choosing your surfaces
+
+`surfaces:` defaults to all five. Narrow it per action and the rest stop
+existing there:
+
+```php
+#[AgentAction(name: 'refund-invoice', surfaces: [Surface::Mcp, Surface::Cli])]
+```
+
+That's enforced, not cosmetic: `Resolve`, the pipeline's first step, rejects
+any call whose caller surface isn't on the list, so an action you didn't
+expose to HTTP is unreachable over HTTP even by someone who knows its name.
+Deployment keeps the final say: HTTP stays off until `agentic.http.enabled`,
+`agentic.mcp.exclude` hard-denies a name on MCP, and
+`agentic.mcp.tiers.unauthenticated` is the allowlist guests get.
+`agentic:list` prints exposure as it actually is: an action declaring `http`
+with no routes mounted shows `http (off)`.
 
 ### Caching the manifest
 
@@ -127,37 +159,37 @@ from a service provider, which is how a package or module contributes actions.
 
 `agentic:cache` compiles both into `bootstrap/cache/agentic.php`. As with
 `route:cache` and `config:cache`, **the cached manifest fully replaces both
-sources** — once it exists, a later `Agentic::register()` call is ignored. So
+sources**: once it exists, a later `Agentic::register()` call is ignored. So
 re-run `agentic:cache` whenever you add an action or install a package that
 registers them; `agentic:clear` (or `optimize:clear`) is the recovery if a stale
 manifest is serving a missing or outdated action. It refuses to write an empty
 manifest, since that file would otherwise shadow every registration.
 
-`optimize:clear` removes the manifest. `optimize` deliberately does *not* build
-it — caching is opt-in, and an app with no actions yet shouldn't fail a deploy.
+`optimize:clear` removes the manifest. `optimize` deliberately does _not_ build
+it: caching is opt-in, and an app with no actions yet shouldn't fail a deploy.
 
 ## The approval flow
 
 `needsApproval` actions execute only with per-invocation human consent:
 
 1. The agent calls the action. It does not execute; the agent receives an
-   agent-legible knock: *"Approval required for action 'refund-invoice'.
+   agent-legible knock: _"Approval required for action 'refund-invoice'.
    Pending under key `abc…`. Ask a human to run: `php artisan
-   agentic:approve 01J…`. Then retry this exact call unchanged."*
+agentic:approve 01J…`. Then retry this exact call unchanged."_
 2. A human runs `agentic:approve <id>` (or `agentic:deny <id>`). The **id**
-   is the approval row's ULID — the decision identity. The **key** identifies
+   is the approval row's ULID, the decision identity. The **key** identifies
    the action+args combination and is shown for correlation only: two
    principals knocking with identical args share a key but hold separate
    approvals, so deciding by key would be ambiguous.
-3. The agent retries the identical call — it executes exactly once. The
+3. The agent retries the identical call, and it executes exactly once. The
    grant is consumed; a repeat call knocks again.
 
 On the laravel/ai surface the same consent is collected without asking the
-model to retry anything — see [Native approval on the laravel/ai surface](#native-approval-on-the-laravelai-surface).
+model to retry anything; see [Native approval on the laravel/ai surface](#native-approval-on-the-laravelai-surface).
 
 Semantics you can rely on:
 
-- Grants are keyed on `sha256(action + canonicalized args)` — different
+- Grants are keyed on `sha256(action + canonicalized args)`: different
   arguments knock separately; argument order never matters.
 - Grants are **bound to the requesting principal**: another user (or agent
   token) with identical args knocks separately.
@@ -186,7 +218,7 @@ and the model is never asked to reissue anything.
 
 The broker still decides. The knock is raised as the run pauses, before laravel/ai
 hands it back to you; `Agentic::approvalDecisions()` then reads the answers a
-human gave through any channel — `agentic:approve`, or your own — and hands
+human gave through any channel (`agentic:approve`, or your own) and hands
 laravel/ai the decisions it needs to continue:
 
 ```php
@@ -227,12 +259,12 @@ Worth knowing:
 
 ### Wiring approvals to your own channels
 
-v1 ships no HTTP grant/deny endpoints. The `ApprovalRequested` event
+This package ships no HTTP grant/deny endpoints. The `ApprovalRequested` event
 carries the pending approval and a single-use capability token; wire any
 channel you like and call the broker:
 
 ```php
-// routes/web.php — POST only. Never grant over GET: chat-app link
+// routes/web.php, POST only. Never grant over GET: chat-app link
 // preview prefetchers will auto-approve your links.
 Route::post('/approvals/{id}', function (string $id, Request $request) {
     $granted = app(ApprovalBroker::class)->decide(
@@ -251,8 +283,8 @@ Route::post('/approvals/{id}', function (string $id, Request $request) {
 `agentic:approve` is token-free by design: anyone with artisan access has
 `tinker` and could flip the row anyway. In-app approvals bind agents that
 reach your app through its surfaces (MCP, HTTP, queue). **An agent with an
-unrestricted shell on the app server cannot be bound by in-app approvals**
-— gate that layer at the transport with something like
+unrestricted shell on the app server cannot be bound by in-app approvals**.
+Gate that layer at the transport with something like
 [daemonsudo](https://github.com/daemonsudo/daemonsudo). The two compose
 (transport gate + in-app gate), but expect double knocks if both approve
 the same tool.
@@ -261,53 +293,56 @@ the same tool.
 
 They answer different questions, and this package builds ON the second:
 
-- **Standing authorization** — *may this principal ever do X?* — is
+- **Standing authorization** (_may this principal ever do X?_) is
   Sanctum abilities + Gates/Policies, decided by code written in advance.
   Your action's `authorize()` delegates straight to them, and `authorize()`
   always runs first; an approval can never escalate past a policy denial.
-- **Per-invocation consent** — *may this specific call, with these exact
-  args, happen now?* — is a human decision at call time, single-use,
+- **Per-invocation consent** (_may this specific call, with these exact
+  args, happen now?_) is a human decision at call time, single-use,
   expiring. That's the approvals subsystem.
 
 **When NOT to use this package:** if your operations split cleanly into
-always-allowed vs never-exposed by role, Sanctum + Policies suffice — and
-if you're exposing a handful of read-only tools on a single surface, raw
-laravel/mcp is simpler. Value scales with actions × surfaces × danger of
-mutations.
+always-allowed vs never-exposed by role, Sanctum + Policies suffice; if
+you're exposing a handful of read-only tools on a single surface, raw
+laravel/mcp is simpler; and if one conversational agent is your only surface,
+[its native pause](#native-approval-on-the-laravelai-surface) already covers
+you. Value scales with actions × surfaces × danger of mutations.
 
 ## Audit
 
-Every non-readOnly execution — success, failure, denial, or knock — writes
+Every non-readOnly execution (success, failure, denial, or knock) writes
 an `agentic_action_log` row: action, surface, user, redacted args, args
 hash, status, error, approval id, definition hash, request id, duration.
 Opt out per action with `#[AgentAction(..., audit: false)]` or globally
-with `agentic.audit.enabled`. `readOnly` actions are excluded by default —
+with `agentic.audit.enabled`. `readOnly` actions are excluded by default;
 opt one in with `#[AgentAction(..., audit: true)]`.
 
 **The boundary, plainly:** audit covers calls where an action definition
-resolved — validation failures, `authorize()` denials, approval knocks,
+resolved: validation failures, `authorize()` denials, approval knocks,
 handler failures, and successes. It does **not** cover calls that never
 reach that point: transport/middleware rejections, controller-level
 rejections, unknown actions, or actions hidden from that surface. If you
 need a record of rejected attempts, add it at your app's transport layer.
 
-**Failure semantics:** the audit write happens *after* the handler runs,
+**Failure semantics:** the audit write happens _after_ the handler runs,
 and is synchronous and exception-propagating. If the audit write itself
-fails, the action has already executed — the caller sees an error, but
+fails, the action has already executed: the caller sees an error, but
 side effects already happened. There is no transactional fail-closed
 guarantee across the handler and the audit row.
 
 **`authorize()` is the standing gate, not exposure:** an action with no
 `authorize()` method is allowed by `Authorize` on every surface it's
 exposed to. Closing the HTTP surface (`agentic.http.enabled`, off by
-default) removes the only anonymous, auto-mounted vector — but if you
-mount MCP, any *authenticated* caller can still invoke a no-`authorize()`
+default) removes the only anonymous, auto-mounted vector, but if you
+mount MCP, any _authenticated_ caller can still invoke a no-`authorize()`
 action. Write `authorize()` on every action that isn't meant to be
 universally callable.
 
 Redaction globs (`agentic.redact`, e.g. `'password'`, `'*.password'`,
-`'card.secret'`) apply to both audit rows and approval payloads — secrets
-never land in either.
+`'card.secret'`) apply to the **arguments** in both audit rows and approval
+payloads, so a matched path lands in neither. Two things to know: the list is
+empty by default (nothing is redacted until you name it), and it doesn't
+cover the `error` column, which stores the exception message as thrown.
 
 ## Schemas
 
@@ -323,19 +358,19 @@ shape.
 ### Array properties
 
 Object arrays use `#[DataCollectionOf(AddressData::class)]`. Scalar arrays are
-declared with a docblock — `@var int[]`, `@var list<string>`, `@var array<int,
+declared with a docblock: `@var int[]`, `@var list<string>`, `@var array<int,
 bool>`; `T` may be `int`, `string`, `float`, or `bool`. Item types are enforced
 on every surface, and elements arriving as strings (CLI arguments, HTTP query
 strings) are coerced to the declared type, so `?ids[]=1&ids[]=2` reaches an
 `int[]` handler as ints.
 
 Enum items (`@var Suit[]`), nested arrays (`@var int[][]`), and string-keyed
-maps (`@var array<string, bool>` — a JSON object, not an array) are not
-supported in v1 and fail at registration rather than compiling to a wrong shape.
+maps (`@var array<string, bool>`, a JSON object rather than an array) are not
+supported yet and fail at registration rather than compiling to a wrong shape.
 
 One sharp edge worth knowing: a property with a default is still `required` to
 Laravel, and `required` treats `[]` and `''` as empty. So `{"ids": []}` is
-rejected even though the schema marks `ids` optional with `"default": []` —
+rejected even though the schema marks `ids` optional with `"default": []`;
 omitting the key is the way to mean "none". Add `#[Present]` to the property to
 accept an explicit empty array:
 
@@ -353,9 +388,9 @@ class ListInvoicesInput extends Data
 ### Listing actions & pagination
 
 Extend `Gtapps\LaravelAgentic\Pagination\PaginatedInput` for a listing
-action's input — it compiles `page` (default `1`) and `perPage` (default
+action's input: it compiles `page` (default `1`) and `perPage` (default
 `15`, max `100`) into the schema for you. Out-of-range `perPage` is
-**rejected** with a validation error, not clamped to the max — see
+**rejected** with a validation error, not clamped to the max; see
 ["Validation rejects; it doesn't clamp"](#reusing-formrequest-validation-during-migration)
 if you're porting a tolerant legacy endpoint:
 
@@ -381,14 +416,14 @@ public function handle(ListInvoicesInput $input): mixed
 
 You don't have to pre-wrap with `::collect()`: returning a **raw** Illuminate
 paginator of Eloquent models or plain arrays (e.g. `Invoice::paginate(...)`)
-works too — its items are hydrated into the declared `outputSchema` type for
+works too: its items are hydrated into the declared `outputSchema` type for
 you. Items that can't be shaped into that type fall through to the action's
 `outputMismatch` policy (a raw paginator is passed through under `Warn`,
 throws under `Strict`).
 
 The result is normalized into spatie/laravel-data's own pagination
-envelope — the same `{data, links, meta}` shape `PaginatedDataCollection`
-already produces — with the paginator's path pinned to `/` so link URLs
+envelope, the same `{data, links, meta}` shape `PaginatedDataCollection`
+already produces, with the paginator's path pinned to `/` so link URLs
 (`first_page_url`, `next_page_url`, ...) are deterministic across every
 surface (MCP, ai-tool, HTTP, CLI, job) instead of reflecting whichever
 surface happened to run. Simple (`simplePaginate()`) and cursor
@@ -396,8 +431,8 @@ pagination are both supported the same way.
 
 Those link URLs are **indicative**, not endpoints to dereference: they are
 pinned to `/` and carry only `page` (not `perPage` or your filters). Paginate
-by re-calling the action with structured `page`/`perPage` arguments — the one
-input every surface accepts — rather than following the URLs.
+by re-calling the action with structured `page`/`perPage` arguments (the one
+input every surface accepts) rather than following the URLs.
 
 ### Scaffolding a new action
 
@@ -411,7 +446,7 @@ php artisan agentic:make-action Invoices/ListInvoices --paginated
 
 `--paginated` generates an input extending `PaginatedInput` and a `handle()`
 returning a paginator. `--force` overwrites existing files. This is a blank
-scaffold only — it does not introspect an existing route or `laravel/mcp`
+scaffold only: it does not introspect an existing route or `laravel/mcp`
 tool; fill in the generated `description`, validation, `authorize()`, and
 `handle()` body yourself.
 
@@ -437,7 +472,7 @@ class StoreInvoiceInput extends Data
 
 Two caveats: rules added this way run during validation but do **not**
 appear in the compiled JSON Schema the model sees, and a FormRequest that
-touches `$this->route()` or `$this->user()` won't port — extract those
+touches `$this->route()` or `$this->user()` won't port; extract those
 rules first.
 
 #### Validation rejects; it doesn't clamp
@@ -451,7 +486,7 @@ public function perPage(int $default = 100, int $max = 250): int
 }
 ```
 
-translates naturally to a `#[Max(250)]` attribute on the input DTO — but
+translates naturally to a `#[Max(250)]` attribute on the input DTO, but
 that's a behavior change, not a like-for-like port. Validation attributes
 **reject** out-of-range input with a `ValidationException` (a field error
 surfaced on every surface); they don't silently coerce it to the bound. A
@@ -480,28 +515,28 @@ Schema the agent sees, the same caveat that already applies to
 If you're porting an existing `laravel/mcp` tool server, the shapes map
 directly:
 
-| `laravel/mcp` | `laravel-agentic` |
-|---|---|
-| `Tool::handle()` | action `handle()` |
-| `Tool::schema()` | spatie/laravel-data `Data` input DTO |
-| `tokenCan('x')` in the tool | `authorize()` calling `tokenCan('x')` |
+| `laravel/mcp`                     | `laravel-agentic`                                  |
+| --------------------------------- | -------------------------------------------------- |
+| `Tool::handle()`                  | action `handle()`                                  |
+| `Tool::schema()`                  | spatie/laravel-data `Data` input DTO               |
+| `tokenCan('x')` in the tool       | `authorize()` calling `tokenCan('x')`              |
 | transport middleware on the route | server middleware where `AgenticServer` is mounted |
-| idempotency wrapper in the tool | keep it in `handle()` |
+| idempotency wrapper in the tool   | keep it in `handle()`                              |
 
 Three things that are easy to get wrong on the way over:
 
 **Authorization is opt-in per action, not implicit.** An action with no
 `authorize()` method is allowed for any caller a surface already
-authenticated — the same as a Laravel route with no policy check; see
+authenticated, the same as a Laravel route with no policy check; see
 ["`authorize()` is the standing gate, not exposure"](#audit) for the full
 implications and [Approvals vs Sanctum + Policies](#approvals-vs-sanctum-policies)
 for how it composes with the approval flow. Define `authorize()` on every
 mutating action you port.
 
-**Reuse your `FormRequest` rules — don't re-derive them.** Input DTOs
+**Reuse your `FormRequest` rules; don't re-derive them.** Input DTOs
 validate through spatie/laravel-data's normal pipeline, which merges a
 static `rules(): array` on top of the rules inferred from types and
-attributes. A `FormRequest::rules()` array can be pasted in as-is — for the
+attributes. A `FormRequest::rules()` array can be pasted in as-is. For the
 `RefundInvoiceInput` from the Quickstart above:
 
 ```php
@@ -516,7 +551,7 @@ public static function rules(): array
 
 These rules run identically on all five surfaces. One caveat: rules that
 only exist in `rules()` (closures, `exists:`, conditional `sometimes`) are
-enforced but aren't visible in the JSON Schema shown to agents — express
+enforced but aren't visible in the JSON Schema shown to agents: express
 structural constraints (types, required-ness) via properties and
 attributes, and keep `rules()` for business rules a schema can't capture.
 
@@ -590,14 +625,14 @@ return [
 
 The scalar, per-environment settings read from env vars (defaults shown above):
 
-| Env var | Config key |
-|---------|------------|
-| `AGENTIC_HTTP_ENABLED` | `http.enabled` |
-| `AGENTIC_APPROVALS_TTL` | `approvals.ttl` |
+| Env var                        | Config key             |
+| ------------------------------ | ---------------------- |
+| `AGENTIC_HTTP_ENABLED`         | `http.enabled`         |
+| `AGENTIC_APPROVALS_TTL`        | `approvals.ttl`        |
 | `AGENTIC_APPROVALS_CONNECTION` | `approvals.connection` |
-| `AGENTIC_AUDIT_ENABLED` | `audit.enabled` |
-| `AGENTIC_AUDIT_CONNECTION` | `audit.connection` |
+| `AGENTIC_AUDIT_ENABLED`        | `audit.enabled`        |
+| `AGENTIC_AUDIT_CONNECTION`     | `audit.connection`     |
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE).
