@@ -99,6 +99,19 @@ it('conceals a denyAsNotFound denial behind the unknown-action wording', functio
     }
 });
 
+it('treats a thrown AuthorizationException as the denial it is, not an error', function () {
+    // Gate::authorize() throws where Gate::inspect() returns. Both are denials,
+    // so both must reach the caller as ActionDenied — otherwise the audit row
+    // reads 'error' and MCP answers with a fault instead of an in-band refusal.
+    try {
+        runOn('response-gate', Surface::AiTool);
+        $this->fail('Expected ActionDenied');
+    } catch (ActionDenied $e) {
+        expect($e->getMessage())->toBe('Refunds are disabled during close.')
+            ->and($e->status)->toBe(403);
+    }
+});
+
 it('presents an ordinary denial as 403 and carries its reason to the audit trail', function () {
     try {
         runOn('response-gate', Surface::Cli);

@@ -7,8 +7,10 @@ use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\BadFallbackAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\IncoherentCompactAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\NoAuditAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\PackagePing;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\ProtectedGateAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\SurfaceOnlyGateAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\SurfaceOverrideAction;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\UnexposedGateAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\ScanActions\AppPing;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
@@ -103,21 +105,43 @@ it('reports Audit as no for every action when the global switch is off', functio
         ->assertSuccessful();
 });
 
-it('shows which authorize methods gate each action', function () {
+it('shows which exposed surfaces each action actually gates', function () {
     config(['agentic.discovery.paths' => []]);
-    Agentic::register([SurfaceOverrideAction::class, SurfaceOnlyGateAction::class, AuditedReadAction::class]);
+    Agentic::register([
+        SurfaceOverrideAction::class,
+        SurfaceOnlyGateAction::class,
+        AuditedReadAction::class,
+        ProtectedGateAction::class,
+    ]);
 
-    // 'all' is the generic authorize(); the surfaces after it override it.
-    // An action listing surfaces with no gate at all reads 'none' — the only
-    // place a partially-gated action is visible without opening the class.
+    // The column names holes, not methods: a surface method replaces the
+    // generic gate rather than adding to it, so surface-override — whose
+    // authorizeCli() overrides a blanket authorize() — is gated everywhere it
+    // is exposed, and reads 'all'. It is the only place a partially-gated
+    // action is visible without opening the class.
     $this->artisan('agentic:list')
         ->expectsTable(
             ['Name', 'Surfaces', 'Read-only', 'Needs approval', 'Audit', 'Gate'],
             [
-                ['surface-override', 'cli, http (off), mcp', 'yes', 'no', 'no', 'all, cli'],
-                ['surface-only-gate', 'mcp, cli', 'yes', 'no', 'no', 'mcp'],
+                ['surface-override', 'cli, http (off), mcp', 'yes', 'no', 'no', 'all'],
+                ['surface-only-gate', 'mcp, cli', 'yes', 'no', 'no', 'open: cli'],
                 ['audited-read', 'mcp, ai-tool, http (off), cli, job', 'yes', 'no', 'yes', 'none'],
+                ['protected-gate', 'cli', 'yes', 'no', 'no', 'broken: cli'],
             ]
+        )
+        ->assertSuccessful();
+});
+
+it('ignores a gate for a surface the action is not exposed on', function () {
+    config(['agentic.discovery.paths' => []]);
+    Agentic::register([UnexposedGateAction::class]);
+
+    // authorizeMcp() on a cli-only action gates nothing. Counting method names
+    // reported 'mcp' here, hiding that the one surface it answers on is open.
+    $this->artisan('agentic:list')
+        ->expectsTable(
+            ['Name', 'Surfaces', 'Read-only', 'Needs approval', 'Audit', 'Gate'],
+            [['unexposed-gate', 'cli', 'yes', 'no', 'no', 'none']]
         )
         ->assertSuccessful();
 });

@@ -4,9 +4,11 @@ namespace Gtapps\LaravelAgentic\Surfaces\Cli;
 
 use Gtapps\LaravelAgentic\Enums\Surface;
 use Gtapps\LaravelAgentic\Kernel\ActionDefinition;
+use Gtapps\LaravelAgentic\Kernel\GateResolver;
 use Gtapps\LaravelAgentic\Kernel\Registry;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Config\Repository;
+use Illuminate\Support\Collection;
 use ReflectionClass;
 
 class ListCommand extends Command
@@ -15,7 +17,7 @@ class ListCommand extends Command
 
     protected $description = 'List registered agentic actions';
 
-    public function handle(Registry $registry, Repository $config): int
+    public function handle(Registry $registry, Repository $config, GateResolver $gates): int
     {
         $definitions = $registry->definitions();
 
@@ -35,7 +37,7 @@ class ListCommand extends Command
                 $d->readOnly ? 'yes' : 'no',
                 is_string($d->needsApproval) ? $d->needsApproval : ($d->needsApproval ? 'yes' : 'no'),
                 $d->isAuditEffective($config) ? 'yes' : 'no',
-                $this->gate($d),
+                $this->gate($d, $gates),
             ])->values()->all()
         );
 
@@ -43,13 +45,21 @@ class ListCommand extends Command
     }
 
     /**
-     * Which authorize methods the action actually defines — `none` when it is
-     * ungated everywhere, `all` for a generic authorize(), plus each surface
-     * that overrides it. Reflected from the handler rather than stored on the
-     * definition: a new definition field would change every definitionHash and
-     * void every outstanding approval grant.
+     * Which of the surfaces the action is exposed on are actually gated: `all`
+     * or `none` when they agree, otherwise the holes by name — `open` for a
+     * surface no method gates, `broken` for a gate the container cannot call,
+     * which throws on every call rather than running.
+     *
+     * It asks GateResolver the same question Authorize asks instead of
+     * counting method names, because a surface method *replaces* the generic
+     * one. Counting made an override read as wider coverage than the gate it
+     * narrowed, and reported gates for surfaces the action isn't exposed on.
+     *
+     * Reflected from the handler rather than stored on the definition: a new
+     * definition field would change every definitionHash and void every
+     * outstanding approval grant.
      */
-    protected function gate(ActionDefinition $definition): string
+    protected function gate(ActionDefinition $definition, GateResolver $gates): string
     {
         if (! class_exists($definition->handler)) {
             // A cached manifest can name a class this process cannot autoload;
@@ -59,16 +69,29 @@ class ListCommand extends Command
 
         $reflection = new ReflectionClass($definition->handler);
 
-        $gates = collect(Surface::cases())
-            ->filter(fn (Surface $s) => $reflection->hasMethod($s->authorizeMethod()))
-            ->map(fn (Surface $s) => $s->value)
-            ->values();
+        $states = collect($definition->surfaces)->mapWithKeys(function (Surface $surface) use ($gates, $reflection) {
+            $method = $gates->methodFor($reflection, $surface);
 
-        if ($reflection->hasMethod('authorize')) {
-            $gates->prepend('all');
+            return [$surface->value => match (true) {
+                $method === null => 'open',
+                $method->isPublic() => 'gated',
+                default => 'broken',
+            }];
+        });
+
+        foreach (['gated' => 'all', 'open' => 'none'] as $state => $label) {
+            if ($states->every(fn (string $s) => $s === $state)) {
+                return $label;
+            }
         }
 
-        return $gates->isEmpty() ? 'none' : $gates->implode(', ');
+        return collect(['open', 'broken'])
+            ->mapWithKeys(fn (string $state) => [
+                $state => $states->filter(fn (string $s) => $s === $state)->keys(),
+            ])
+            ->reject(fn (Collection $surfaces) => $surfaces->isEmpty())
+            ->map(fn (Collection $surfaces, string $state) => $state.': '.$surfaces->implode(', '))
+            ->implode('; ');
     }
 
     /**

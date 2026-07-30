@@ -379,7 +379,10 @@ Three rules:
   above). An action defining only `authorizeMcp()` is open on every other
   surface in its `surfaces:` list — and `surfaces:` defaults to all five. Narrow
   `surfaces:`, or add a generic `authorize()`, whenever that isn't what you
-  want. `agentic:list`'s **Gate** column shows what each action actually gates.
+  want. `agentic:list`'s **Gate** column names the holes: `all` or `none` when
+  the exposed surfaces agree, otherwise `open: cli` for a surface no method
+  gates and `broken: cli` for a gate that isn't public, which throws on every
+  call. Gates for surfaces outside `surfaces:` are ignored — they can't run.
 - **Surface methods receive the same bindings** as `authorize()` —
   `ActionContext` and the input DTO by type, in any order, with method-injection
   DI for the rest. Inherited and trait-provided methods count, and because PHP
@@ -415,6 +418,20 @@ the response's status instead of a blanket 403. `Response::denyAsNotFound()` is
 the one exception: the caller gets the unknown-action wording byte-identical to
 a genuine miss, because a reason returned there would disclose exactly what the
 404 conceals. Either way the policy's reason is recorded in the audit row.
+
+`denyAsNotFound()` conceals the **denial**, not the action's existence. The
+pipeline validates before it authorizes, so a caller that sends invalid
+arguments to a concealed action still gets the 422 field errors an exposed
+action returns, and over HTTP a `GET` of a concealed non-`readOnly` action still
+answers 405 where an unknown name answers 404. If a caller must not learn that
+the action exists at all, drop the surface from `surfaces:` (or, on MCP, use
+`agentic.mcp.exclude` / the unauthenticated tier) — those gate `Resolve`, which
+runs first.
+
+The throwing half of the same contract works too: an `AuthorizationException`
+raised inside the gate — what `Gate::authorize()` does on a denial — carries a
+response, and the step reads it exactly as a returned one. So the trail records
+`denied`, not `error`.
 
 Two things follow from "verbatim". The message is written for a model that will
 read it, so say what to do differently, not what your schema is called. And it

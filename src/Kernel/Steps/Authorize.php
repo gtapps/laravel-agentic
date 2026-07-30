@@ -6,6 +6,8 @@ use Gtapps\LaravelAgentic\Enums\Surface;
 use Gtapps\LaravelAgentic\Exceptions\ActionDenied;
 use Gtapps\LaravelAgentic\Kernel\ActionCall;
 use Gtapps\LaravelAgentic\Kernel\CallsActionMethods;
+use Gtapps\LaravelAgentic\Kernel\GateResolver;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\Access\Response;
 use Illuminate\Contracts\Container\Container;
 use ReflectionClass;
@@ -20,9 +22,10 @@ class Authorize
 {
     use CallsActionMethods;
 
-    protected const GENERIC = 'authorize';
-
-    public function __construct(protected Container $container) {}
+    public function __construct(
+        protected Container $container,
+        protected GateResolver $gates,
+    ) {}
 
     public function __invoke(ActionCall $call): void
     {
@@ -34,7 +37,15 @@ class Authorize
             return;
         }
 
-        $decision = $this->callAction($call->handler, $method, $call);
+        try {
+            $decision = $this->callAction($call->handler, $method, $call);
+        } catch (AuthorizationException $e) {
+            // Gate::authorize() and Response::authorize() throw rather than
+            // return. Same denial, same reason, same status — so it becomes the
+            // same ActionDenied, or the trail would file a refusal as an error
+            // and MCP would answer with a fault instead of an in-band denial.
+            $decision = $e->toResponse();
+        }
 
         if ($decision === true || ($decision instanceof Response && $decision->allowed())) {
             return;
@@ -46,34 +57,24 @@ class Authorize
     }
 
     /**
-     * The surface's own method wins over the generic one; a surface neither
-     * names is ungated, exactly like an action with no authorize() at all.
-     *
-     * Detection ignores visibility on purpose. Treating a non-public method as
-     * absent would fall through to the generic gate — or to no gate — and run
-     * an action whose author believed it was gated, so it is reported instead.
+     * A gate the container cannot call is reported, never skipped — see
+     * GateResolver for why visibility is checked here rather than there.
      */
     protected function methodFor(object $handler, Surface $surface): ?string
     {
         $reflection = new ReflectionClass($handler);
 
-        foreach ([$surface->authorizeMethod(), static::GENERIC] as $method) {
-            if (! $reflection->hasMethod($method)) {
-                continue;
-            }
+        $method = $this->gates->methodFor($reflection, $surface);
 
-            if (! $reflection->getMethod($method)->isPublic()) {
-                throw new RuntimeException(sprintf(
-                    '%s::%s() must be public to authorize %s calls.',
-                    $reflection->getName(),
-                    $reflection->getMethod($method)->getName(),
-                    $surface->value,
-                ));
-            }
-
-            return $method;
+        if ($method !== null && ! $method->isPublic()) {
+            throw new RuntimeException(sprintf(
+                '%s::%s() must be public to authorize %s calls.',
+                $reflection->getName(),
+                $method->getName(),
+                $surface->value,
+            ));
         }
 
-        return null;
+        return $method?->getName();
     }
 }

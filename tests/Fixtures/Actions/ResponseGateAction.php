@@ -15,7 +15,7 @@ use Illuminate\Auth\Access\Response;
     description: 'Authorizes with Gate responses.',
     readOnly: true,
     audit: true,
-    surfaces: [Surface::Mcp, Surface::Http, Surface::Cli, Surface::Job],
+    surfaces: [Surface::Mcp, Surface::AiTool, Surface::Http, Surface::Cli, Surface::Job],
 )]
 class ResponseGateAction
 {
@@ -32,6 +32,15 @@ class ResponseGateAction
     public function authorizeCli(): Response
     {
         return Response::deny('Refunds are disabled during close.');
+    }
+
+    /**
+     * The throwing half of the Gate contract — what Gate::authorize() does on a
+     * denial. It has to land as the same denial the returning half produces.
+     */
+    public function authorizeAiTool(): bool
+    {
+        return Response::deny('Refunds are disabled during close.')->authorize()->allowed();
     }
 
     public function authorizeJob(): Response
