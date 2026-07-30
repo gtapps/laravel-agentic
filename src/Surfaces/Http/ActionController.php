@@ -43,7 +43,9 @@ class ActionController
         } catch (ActionNotFound $e) {
             abort(404, $e->getMessage());
         } catch (ActionDenied $e) {
-            abort(403, $e->getMessage());
+            // 403 unless the policy concealed the action, which presents as the
+            // same 404 an unexposed action returns above.
+            abort($e->status, $e->getMessage());
         } catch (ApprovalRequiredException $e) {
             return new JsonResponse([
                 'status' => 'approval_required',

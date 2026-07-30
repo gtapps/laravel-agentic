@@ -39,7 +39,7 @@ pipeline of steps (`src/Kernel/Steps/`), and the order is not configurable:
 
 1. `Resolve` — look up the `ActionDefinition` from the Registry
 2. `ValidateAndHydrate` — validate raw args against the full input schema, hydrate the DTO
-3. `Authorize` — the action's `authorize()`; standing authz, always first
+3. `Authorize` — the action's `authorize{Surface}()` or `authorize()`; standing authz, always first
 4. `ApprovalGate` — per-invocation human consent (only for non-`readOnly` + `needsApproval`)
 5. `Execute` — call the handler's `handle()`
 6. `NormalizeResult` — apply `outputSchema` / `Mismatch` policy

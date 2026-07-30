@@ -64,7 +64,11 @@ class Runner
                 default => 'error',
             };
 
-            $this->recorder->recordSafely($call, $status, $e->getMessage());
+            // A concealed denial tells the caller nothing; the trail still gets
+            // the policy's real reason.
+            $reason = $e instanceof ActionDenied ? $e->auditReason : $e->getMessage();
+
+            $this->recorder->recordSafely($call, $status, $reason);
 
             throw $e;
         }

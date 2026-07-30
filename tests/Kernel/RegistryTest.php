@@ -7,6 +7,8 @@ use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\BadFallbackAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\IncoherentCompactAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\NoAuditAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\PackagePing;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\SurfaceOnlyGateAction;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\SurfaceOverrideAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\ScanActions\AppPing;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
@@ -76,10 +78,10 @@ it('shows the effective Audit column per action', function () {
 
     $this->artisan('agentic:list')
         ->expectsTable(
-            ['Name', 'Surfaces', 'Read-only', 'Needs approval', 'Audit'],
+            ['Name', 'Surfaces', 'Read-only', 'Needs approval', 'Audit', 'Gate'],
             [
-                ['audited-read', 'mcp, ai-tool, http (off), cli, job', 'yes', 'no', 'yes'],
-                ['no-audit', 'mcp, ai-tool, http (off), cli, job', 'no', 'no', 'no'],
+                ['audited-read', 'mcp, ai-tool, http (off), cli, job', 'yes', 'no', 'yes', 'none'],
+                ['no-audit', 'mcp, ai-tool, http (off), cli, job', 'no', 'no', 'no', 'none'],
             ]
         )
         ->assertSuccessful();
@@ -95,8 +97,27 @@ it('reports Audit as no for every action when the global switch is off', functio
     // ...but the effective column the list command shows folds in the global switch.
     $this->artisan('agentic:list')
         ->expectsTable(
-            ['Name', 'Surfaces', 'Read-only', 'Needs approval', 'Audit'],
-            [['audited-read', 'mcp, ai-tool, http (off), cli, job', 'yes', 'no', 'no']]
+            ['Name', 'Surfaces', 'Read-only', 'Needs approval', 'Audit', 'Gate'],
+            [['audited-read', 'mcp, ai-tool, http (off), cli, job', 'yes', 'no', 'no', 'none']]
+        )
+        ->assertSuccessful();
+});
+
+it('shows which authorize methods gate each action', function () {
+    config(['agentic.discovery.paths' => []]);
+    Agentic::register([SurfaceOverrideAction::class, SurfaceOnlyGateAction::class, AuditedReadAction::class]);
+
+    // 'all' is the generic authorize(); the surfaces after it override it.
+    // An action listing surfaces with no gate at all reads 'none' — the only
+    // place a partially-gated action is visible without opening the class.
+    $this->artisan('agentic:list')
+        ->expectsTable(
+            ['Name', 'Surfaces', 'Read-only', 'Needs approval', 'Audit', 'Gate'],
+            [
+                ['surface-override', 'cli, http (off), mcp', 'yes', 'no', 'no', 'all, cli'],
+                ['surface-only-gate', 'mcp, cli', 'yes', 'no', 'no', 'mcp'],
+                ['audited-read', 'mcp, ai-tool, http (off), cli, job', 'yes', 'no', 'yes', 'none'],
+            ]
         )
         ->assertSuccessful();
 });
@@ -107,8 +128,8 @@ it('drops the http (off) marker once the HTTP surface is enabled', function () {
 
     $this->artisan('agentic:list')
         ->expectsTable(
-            ['Name', 'Surfaces', 'Read-only', 'Needs approval', 'Audit'],
-            [['audited-read', 'mcp, ai-tool, http, cli, job', 'yes', 'no', 'yes']]
+            ['Name', 'Surfaces', 'Read-only', 'Needs approval', 'Audit', 'Gate'],
+            [['audited-read', 'mcp, ai-tool, http, cli, job', 'yes', 'no', 'yes', 'none']]
         )
         ->assertSuccessful();
 });

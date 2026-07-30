@@ -3,6 +3,7 @@
 use Gtapps\LaravelAgentic\Facades\Agentic;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\CliOnlyAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\ReadOnlyLookupAction;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\ResponseGateAction;
 use Illuminate\Auth\GenericUser;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Gate;
@@ -50,6 +51,22 @@ it('maps authorization denial to 403', function () {
     $this->actingAs(new GenericUser(['id' => 2]))
         ->postJson('/agentic/actions/refund-invoice', ['invoiceId' => 42, 'amount' => 5.0])
         ->assertStatus(403);
+});
+
+it('presents a concealed denial as the same 404 a hidden action returns', function () {
+    // response-gate denies HTTP with denyAsNotFound, so the status AND the body
+    // must be indistinguishable from cli-only, which is simply not exposed here.
+    Agentic::register([ResponseGateAction::class]);
+
+    $concealed = $this->actingAs(new GenericUser(['id' => 1]))
+        ->postJson('/agentic/actions/response-gate', ['message' => 'hi']);
+
+    $hidden = $this->actingAs(new GenericUser(['id' => 1]))
+        ->postJson('/agentic/actions/cli-only', ['message' => 'hi']);
+
+    expect($concealed->status())->toBe(404)
+        ->and($hidden->status())->toBe(404)
+        ->and($concealed->json('message'))->not->toContain('another tenant');
 });
 
 it('returns 404 for unknown or hidden actions', function () {

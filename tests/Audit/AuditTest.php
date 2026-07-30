@@ -14,6 +14,7 @@ use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\AuditedReadAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\CliOnlyAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\FailingAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\NoAuditAction;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\ResponseGateAction;
 use Illuminate\Auth\GenericUser;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
@@ -104,6 +105,23 @@ it('writes a denied row on authorization failure', function () {
     }
 
     expect(ActionLog::where('action', 'refund-invoice')->where('status', 'denied')->count())->toBe(1);
+});
+
+it('keeps the policy reason in the audit row of a concealed denial', function () {
+    // The caller is told the action does not exist; the trail still has to say
+    // why it was actually refused, or a concealed denial is unauditable.
+    Agentic::register([ResponseGateAction::class]);
+
+    try {
+        Agentic::run('response-gate', ['message' => 'hi'], app(ContextFactory::class)->make(Surface::Http));
+        $this->fail('Expected ActionDenied');
+    } catch (ActionDenied) {
+    }
+
+    $row = ActionLog::where('action', 'response-gate')->sole();
+
+    expect($row->status)->toBe('denied')
+        ->and($row->error)->toBe('invoice 42 belongs to another tenant');
 });
 
 it('writes an error row when the handler throws', function () {

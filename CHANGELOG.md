@@ -3,6 +3,20 @@
 All notable changes to `gtapps/laravel-agentic` are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **per-surface authorization** — an action may define `authorizeMcp()`, `authorizeAiTool()`, `authorizeHttp()`, `authorizeCli()`, or `authorizeJob()` alongside `authorize()`. The surface's own method _replaces_ the generic one for that surface, so a gate can widen access as well as narrow it (`authorizeCli(): true` drops the gate for the CLI while every other surface still runs the policy). A surface no method names stays ungated, exactly as an action with no `authorize()` behaves today. Surface methods get the same container-call bindings as `authorize()`; inherited and trait-provided methods count.
+- **authorization may return `Illuminate\Auth\Access\Response`** — `authorize*()` methods may return `bool` or a Gate response, so `Gate::inspect()` can be returned straight through. `Response::deny('reason')` sends that reason to the caller on every surface and records it in the audit row; HTTP now answers with the response's status rather than a blanket 403. `Response::denyAsNotFound()` conceals the action behind the unknown-action wording, byte-identical to a genuine miss — its message is withheld from the caller and kept only in the audit trail.
+- **`agentic:list` gained a `Gate` column** — `none`, `all` for a generic `authorize()`, plus each surface that overrides it. It is the only place a partially-gated action is visible without opening the class.
+
+### Notes
+
+- Additive: no existing action can define these method names, and an `authorize()` returning `bool` behaves exactly as before.
+- Denial reasons are written by you and reach models verbatim; they also land **unredacted** in the audit `error` column, which `agentic.redact` does not cover.
+- A denial inside a queued action still propagates and is retried by the worker. If that should be terminal, add `Illuminate\Queue\Middleware\FailOnException` to the job's middleware — retry policy stays with the queue.
+
 ## [0.0.7] - 2026-07-24
 
 ### Changed
