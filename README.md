@@ -344,6 +344,114 @@ payloads, so a matched path lands in neither. Two things to know: the list is
 empty by default (nothing is redacted until you name it), and it doesn't
 cover the `error` column, which stores the exception message as thrown.
 
+## Per-surface authorization
+
+An action may gate a surface on its own terms by defining
+`authorize{Surface}()` — `authorizeMcp`, `authorizeAiTool`, `authorizeHttp`,
+`authorizeCli`, `authorizeJob` — alongside or instead of `authorize()`. The
+shape is Laravel's notification channels: `surfaces:` declares where the action
+is reachable the way `via()` does, and each method owns one channel.
+
+```php
+#[AgentAction(name: 'refund-invoice', surfaces: [Surface::Mcp, Surface::Cli])]
+class RefundInvoice
+{
+    public function authorize(ActionContext $ctx, RefundInvoiceInput $input): bool
+    {
+        return Gate::forUser($ctx->user())->allows('refund', $input->invoiceId);
+    }
+
+    public function authorizeCli(): bool
+    {
+        return true;   // local-trust surface: the process boundary is the auth line
+    }
+}
+```
+
+Three rules:
+
+- **The surface's own method wins.** It _replaces_ `authorize()` for that
+  surface rather than running on top of it, so a surface gate can widen access,
+  not only narrow it. That is the point — `authorizeCli(): true` above drops the
+  gate for CLI while MCP still runs the policy.
+- **A surface no method names is ungated**, exactly like an action with no
+  `authorize()` at all (see "`authorize()` is the standing gate, not exposure"
+  above). An action defining only `authorizeMcp()` is open on every other
+  surface in its `surfaces:` list — and `surfaces:` defaults to all five. Narrow
+  `surfaces:`, or add a generic `authorize()`, whenever that isn't what you
+  want. `agentic:list`'s **Gate** column names the holes: `all` or `none` when
+  the exposed surfaces agree, otherwise `open: cli` for a surface no method
+  gates and `broken: cli` for a gate that isn't public, which throws on every
+  call. Gates for surfaces outside `surfaces:` are ignored — they can't run.
+  A `?` means the handler class couldn't be loaded to answer at all, which a
+  stale `agentic:cache` manifest can cause; rebuild it with `agentic:cache`.
+- **Surface methods receive the same bindings** as `authorize()` —
+  `ActionContext` and the input DTO by type, in any order, with method-injection
+  DI for the rest. Inherited and trait-provided methods count, and because PHP
+  method lookup is case-insensitive, `authorizeMCP()` gates MCP too.
+
+`$ctx->caller()` is stamped by the adapter that verified identity, never by the
+payload, so no MCP or HTTP caller can present itself as CLI. But note what a CLI
+gate actually asserts: `--as` is local-trust impersonation, selecting a subject
+without establishing who selected it.
+
+> **The dangerous shape:** `authorizeMcp(): true` on an action listed in
+> `agentic.mcp.tiers.unauthenticated` drops the gate for **guests**, and
+> `$ctx->user()` is `null` inside it. Gate on abilities rather than the channel
+> whenever the rule is really about the principal.
+
+### Denials that say why
+
+Authorization methods may return `bool` or an
+`Illuminate\Auth\Access\Response`, the same contract Laravel policies already
+use — so `Gate::inspect()` can be returned straight through:
+
+```php
+public function authorizeMcp(RefundInvoiceInput $input): Response
+{
+    return $input->amount <= 10_000
+        ? Response::allow()
+        : Response::deny('Refunds over $10,000 must be run by a human via CLI.');
+}
+```
+
+The message reaches the caller verbatim on every surface, and HTTP answers with
+the response's status instead of a blanket 403. `Response::denyAsNotFound()` is
+the one exception: the caller gets the unknown-action wording byte-identical to
+a genuine miss, because a reason returned there would disclose exactly what the
+404 conceals. Either way the policy's reason is recorded in the audit row.
+
+`denyAsNotFound()` conceals the **denial**, not the action's existence. The
+pipeline validates before it authorizes, so a caller that sends invalid
+arguments to a concealed action still gets the 422 field errors an exposed
+action returns, and over HTTP a `GET` of a concealed non-`readOnly` action still
+answers 405 where an unknown name answers 404. If a caller must not learn that
+the action exists at all, drop the surface from `surfaces:` (or, on MCP, use
+`agentic.mcp.exclude` / the unauthenticated tier) — those gate `Resolve`, which
+runs first.
+
+The throwing half of the same contract works too: an `AuthorizationException`
+raised inside the gate — what `Gate::authorize()` does on a denial — carries a
+response, and the step reads it exactly as a returned one. So the trail records
+`denied`, not `error`.
+
+Two things follow from "verbatim". The message is written for a model that will
+read it, so say what to do differently, not what your schema is called. And it
+lands **unredacted** in the audit `error` column — `agentic.redact` covers
+arguments, not exception messages.
+
+Only authorization varies by surface. Behavior does not: there is no
+`handleMcp()`, and `tests/ParityTest.php` asserts all five surfaces produce
+identical results from one definition.
+
+### Denied jobs
+
+A denial thrown inside a queued action propagates, so the worker retries it per
+the job's policy. If a denial should be terminal for your app, that's a queue
+decision Laravel already owns — add
+`Illuminate\Queue\Middleware\FailOnException` to the job's middleware rather
+than expecting the package to decide retry policy for you.
+
 ## Schemas
 
 Input DTOs are spatie/laravel-data classes compiled once to JSON Schema
