@@ -1,5 +1,6 @@
 <?php
 
+use Gtapps\LaravelAgentic\Exceptions\ActionNotFound;
 use Gtapps\LaravelAgentic\Facades\Agentic;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\CliOnlyAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\ReadOnlyLookupAction;
@@ -64,9 +65,14 @@ it('presents a concealed denial as the same 404 a hidden action returns', functi
     $hidden = $this->actingAs(new GenericUser(['id' => 1]))
         ->postJson('/agentic/actions/cli-only', ['message' => 'hi']);
 
+    // Both bodies must be the wording an unknown action of that same name
+    // produces — not each other's, which differ only by the name they quote.
+    // Asserting the policy reason is absent is too weak: an empty or generic
+    // body would pass that and still not match a genuine miss.
     expect($concealed->status())->toBe(404)
         ->and($hidden->status())->toBe(404)
-        ->and($concealed->json('message'))->not->toContain('another tenant');
+        ->and($concealed->json('message'))->toBe(ActionNotFound::messageFor('response-gate'))
+        ->and($hidden->json('message'))->toBe(ActionNotFound::messageFor('cli-only'));
 });
 
 it('returns 404 for unknown or hidden actions', function () {

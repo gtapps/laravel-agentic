@@ -383,6 +383,8 @@ Three rules:
   the exposed surfaces agree, otherwise `open: cli` for a surface no method
   gates and `broken: cli` for a gate that isn't public, which throws on every
   call. Gates for surfaces outside `surfaces:` are ignored — they can't run.
+  A `?` means the handler class couldn't be loaded to answer at all, which a
+  stale `agentic:cache` manifest can cause; rebuild it with `agentic:cache`.
 - **Surface methods receive the same bindings** as `authorize()` —
   `ActionContext` and the input DTO by type, in any order, with method-injection
   DI for the rest. Inherited and trait-provided methods count, and because PHP
