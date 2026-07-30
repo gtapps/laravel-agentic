@@ -3,7 +3,7 @@
 All notable changes to `gtapps/laravel-agentic` are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.1.0] - 2026-07-30
 
 ### Added
 
@@ -11,11 +11,19 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 - **authorization may return `Illuminate\Auth\Access\Response`** — `authorize*()` methods may return `bool` or a Gate response, so `Gate::inspect()` can be returned straight through. `Response::deny('reason')` sends that reason to the caller on every surface and records it in the audit row; HTTP now answers with the response's status rather than a blanket 403. `Response::denyAsNotFound()` conceals the denial behind the unknown-action wording, byte-identical to a genuine miss — its message is withheld from the caller and kept only in the audit trail. It conceals the denial, not the action's existence: validation precedes authorization, so invalid arguments still draw the 422 an exposed action returns. Drop the surface from `surfaces:` when existence itself must stay hidden. An `AuthorizationException` thrown from a gate — what `Gate::authorize()` raises — becomes the same denial as the response it carries, so it is audited as `denied` rather than `error`.
 - **`agentic:list` gained a `Gate` column** — it names the holes across the surfaces the action is exposed on: `all` or `none` when they agree, otherwise `open: cli` for a surface no method gates and `broken: cli` for a gate that isn't public and so throws on every call. Gates for surfaces outside `surfaces:` are ignored, since they can never run. It is the only place a partially-gated action is visible without opening the class, and it resolves gates through the same `GateResolver` the pipeline authorizes with, so the report cannot drift from what `Authorize` would do.
 
+### Fixed
+
+- **cli: published `AGENTS.md` stub now points at the approval id, not the key** — the shipped guidance told agents to run `agentic:approve <64-hex-key>`, but `agentic:approve` only accepts the approval id; agents following the stub literally would pass the wrong argument.
+
 ### Notes
 
 - Additive: no existing action can define these method names, and an `authorize()` returning `bool` behaves exactly as before.
 - Denial reasons are written by you and reach models verbatim; they also land **unredacted** in the audit `error` column, which `agentic.redact` does not cover.
 - A denial inside a queued action still propagates and is retried by the worker. If that should be terminal, add `Illuminate\Queue\Middleware\FailOnException` to the job's middleware — retry policy stays with the queue.
+
+### Upgrading
+
+No config or migration changes required.
 
 ## [0.0.7] - 2026-07-24
 

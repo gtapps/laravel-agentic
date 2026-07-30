@@ -28,19 +28,20 @@ Some actions require per-invocation human consent. The first call does NOT
 execute; it returns an error like:
 
 > Approval required for action 'refund-invoice'. Pending under key
-> `<64-hex-key>`. Ask a human to run: `php artisan agentic:approve <key>`.
+> `<64-hex-key>`. Ask a human to run: `php artisan agentic:approve <approval-id>`.
 > Then retry this exact call unchanged.
 
 What you must do:
 
-1. Surface the key and the approve command to the human. Do not guess or
-   fabricate keys.
+1. Surface the approval id and the approve command to the human. Do not guess
+   or fabricate ids. The key identifies the action and arguments for
+   correlation; it is not accepted by the approve command.
 2. Wait for the human to confirm they approved.
 3. Retry the **identical call with identical arguments**. Any change in
    arguments produces a different key and knocks again.
 4. Grants are single-use and expire (default 10 minutes). If your retry
    knocks again, the grant was consumed, expired, or the action definition
-   changed — ask the human to approve the new key.
+   changed — ask the human to approve the new request by its approval id.
 
 Never attempt to bypass an approval by rephrasing arguments, switching
 surfaces, or calling adjacent actions to achieve the same effect.
