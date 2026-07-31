@@ -39,7 +39,7 @@ Then check for drift the test suite cannot see:
 1. **Public API surface** — if any `src/` class, method signature, config key, or attribute parameter changed, that is at minimum a `minor` under 0.x. List them.
 2. **Config drift** — if `config/agentic.php` gained or renamed a key, it must appear in the CHANGELOG's Upgrading section (publishers hold a stale copy of this file).
 3. **Migrations** — if `database/migrations/` gained a file, it must appear in the Upgrading section (consumers must re-run `migrate`).
-4. **README/CLAUDE.md accuracy** — if a surface, command, or config key changed, confirm both files still describe reality. Fix in this release; docs fixes go in the commit message, not the CHANGELOG (see Step 3).
+4. **README/CLAUDE.md accuracy** — if a surface, command, or config key changed, confirm both files still describe reality. Fix in this release; docs fixes go in the commit message, not the CHANGELOG (see Step 4).
 
 ### 2. Refresh the knowledge graph
 
@@ -54,7 +54,7 @@ fi
 
 AST-only, no API cost. Guarded on the graph existing, so it skips silently on
 checkouts without graphify. `graphify-out/` is gitignored, so this never
-affects release staging or the Step 5 `git status` check. If it errors, warn
+affects release staging or the Step 6 `git status` check. If it errors, warn
 and continue — a stale graph must not block a release.
 
 ### 3. Determine the version
@@ -138,21 +138,47 @@ No config or migration changes required.
 
 3. **What belongs where:** why it changed → the bullet. What the consumer must execute → Upgrading. A behavior delta needing no action → one final line prefixed `**Note:**`, not a numbered step.
 
-### 5. Final validation
+### 5. Update the version badge and other version references
 
-Steps 2–4 only touch Markdown, so re-running the suite is unnecessary. Confirm:
+`README.md` hardcodes the current version in its badge (near the top):
+
+```markdown
+<a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-X.Y.Z-green.svg" alt="Version X.Y.Z" /></a>
+```
+
+Update both the `badge/version-X.Y.Z-green.svg` segment and the `alt` text to
+the version being released.
+
+Then check for any other stray hardcoded version references so the badge
+isn't the only one that gets missed:
+
+```bash
+grep -rn "$LAST_VERSION_NUMBER" --include='*.md' --include='*.json' --include='*.yml' --include='*.php' . \
+  | grep -v -E '^(\./)?(vendor|node_modules)/' | grep -v CHANGELOG.md
+```
+
+(`$LAST_VERSION_NUMBER` is the previous tag's version, e.g. `0.1.0` for
+`v0.1.0`.) `CHANGELOG.md` is expected to still mention old versions in its
+history — that's not drift. `composer.json` must **never** gain a `version`
+field (see the top of this doc); if the grep finds one, remove it, don't bump
+it. Update any other genuine hit to the new version.
+
+### 6. Final validation
+
+Steps 2–5 only touch Markdown, so re-running the suite is unnecessary. Confirm:
 
 ```bash
 git status --short
 grep -c '"version"' composer.json   # must print 0
 ```
 
-`git status` must show only `CHANGELOG.md` plus any doc files this release
-legitimately corrected. Any unexpected entry → investigate before committing.
-`HANDOFF.md`, `PLAN-V1.md`, `.claude/settings.local.json`, and `graphify-out/`
-are gitignored and must never appear.
+`git status` must show only `CHANGELOG.md`, `README.md` (badge bump), plus any
+other doc files this release legitimately corrected. Any unexpected entry →
+investigate before committing. `HANDOFF.md`, `PLAN-V1.md`,
+`.claude/settings.local.json`, and `graphify-out/` are gitignored and must
+never appear.
 
-### 6. Commit and push
+### 7. Commit and push
 
 Stage only the files this release touched (**not** `git add -A`). Commit
 following the existing convention:
@@ -164,13 +190,13 @@ release: v<X.Y.Z>
 Add a body summarizing the release and any docs corrections that were kept out
 of the CHANGELOG. Push to `origin`.
 
-### 7. Branch check before tagging
+### 8. Branch check before tagging
 
 ```bash
 git branch --show-current
 ```
 
-- **On `main`** → tag immediately (Step 8).
+- **On `main`** → tag immediately (Step 9).
 - **On any other branch** → **stop. Do not tag.** Tagging a branch tip pins a
   SHA that `main` never carries after a squash or rebase merge, stranding the
   tag on an orphan commit — and Packagist will publish that orphan as the
@@ -180,7 +206,7 @@ git branch --show-current
   `main`. Offer tagging now only as an explicit second option, and wait for the
   user's choice.
 
-### 8. Tag and publish
+### 9. Tag and publish
 
 Tags are **plain `v<X.Y.Z>`** — this is what Composer's version parser and
 Packagist expect. Do not prefix the package name.
@@ -210,7 +236,7 @@ rm "$NOTES_FILE"
 
 If CI runs on tags, confirm the workflow went green before announcing.
 
-### 9. Report
+### 10. Report
 
 Print the new version, the commit hash, the tag, the GitHub release URL, and a
 one-liner confirming it's pushed. Note that Packagist picks up the tag via its

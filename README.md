@@ -170,36 +170,20 @@ it: caching is opt-in, and an app with no actions yet shouldn't fail a deploy.
 
 ## The approval flow
 
-`needsApproval` actions execute only with per-invocation human consent:
+Actions marked `needsApproval` run only after human approval:
 
-1. The agent calls the action. It does not execute; the agent receives an
-   agent-legible knock: _"Approval required for action 'refund-invoice'.
-   Pending under key `abc…`. Ask a human to run: `php artisan
-agentic:approve 01J…`. Then retry this exact call unchanged."_
-2. A human runs `agentic:approve <id>` (or `agentic:deny <id>`). The **id**
-   is the approval row's ULID, the decision identity. The **key** identifies
-   the action+args combination and is shown for correlation only: two
-   principals knocking with identical args share a key but hold separate
-   approvals, so deciding by key would be ambiguous.
-3. The agent retries the identical call, and it executes exactly once. The
-   grant is consumed; a repeat call knocks again.
+1. The caller receives an approval request instead of executing the action.
+2. A human runs `agentic:approve <id>` or `agentic:deny <id>`.
+3. The caller retries the same action. An approved call executes once and
+   consumes the grant.
 
-On the laravel/ai surface the same consent is collected without asking the
-model to retry anything; see [Native approval on the laravel/ai surface](#native-approval-on-the-laravelai-surface).
+Approvals are bound to the requesting principal, canonicalized arguments, and
+current action definition. They are single-use and expire to deny after
+`agentic.approvals.ttl` (10 minutes by default). The approval key identifies
+the action and arguments for correlation; decisions use the approval ULID.
 
-Semantics you can rely on:
-
-- Grants are keyed on `sha256(action + canonicalized args)`: different
-  arguments knock separately; argument order never matters.
-- Grants are **bound to the requesting principal**: another user (or agent
-  token) with identical args knocks separately.
-- Unanswered knocks and unconsumed grants **expire to deny**
-  (`agentic.approvals.ttl`, default 10 minutes).
-- A **throwing `needsApproval` predicate fails closed** to "approval
-  required".
-- If the action definition changed since approval, the grant is void and
-  the call knocks again.
-- `needsApproval` accepts a predicate class for conditional consent:
+`needsApproval` also accepts a predicate class for conditional consent. If the
+predicate throws, Laravel Agentic fails closed and requires approval:
 
 ```php
 #[AgentAction(..., needsApproval: BigRefundsNeedApproval::class)]
@@ -212,14 +196,9 @@ Semantics you can rely on:
 
 ### Native approval on the laravel/ai surface
 
-laravel/ai 0.10 can pause a run for a human, so the ai-tool surface uses that
-instead of the retry protocol above: the run stops before the tool executes,
-and the model is never asked to reissue anything.
-
-The broker still decides. The knock is raised as the run pauses, before laravel/ai
-hands it back to you; `Agentic::approvalDecisions()` then reads the answers a
-human gave through any channel (`agentic:approve`, or your own) and hands
-laravel/ai the decisions it needs to continue:
+Laravel Agentic uses `laravel/ai`'s native approval pause on the ai-tool
+surface. The approval broker records the request, and
+`Agentic::approvalDecisions()` returns the decisions needed to continue:
 
 ```php
 $response = $agent->forUser($user)->prompt('Refund invoice 42');
@@ -310,19 +289,15 @@ you. Value scales with actions × surfaces × danger of mutations.
 
 ## Audit
 
-Every non-readOnly execution (success, failure, denial, or knock) writes
-an `agentic_action_log` row: action, surface, user, redacted args, args
-hash, status, error, approval id, definition hash, request id, duration.
-Opt out per action with `#[AgentAction(..., audit: false)]` or globally
-with `agentic.audit.enabled`. `readOnly` actions are excluded by default;
-opt one in with `#[AgentAction(..., audit: true)]`.
+Laravel Agentic records successful executions, failures, authorization
+denials, and approval requests in `agentic_action_log`.
 
-**The boundary, plainly:** audit covers calls where an action definition
-resolved: validation failures, `authorize()` denials, approval knocks,
-handler failures, and successes. It does **not** cover calls that never
-reach that point: transport/middleware rejections, controller-level
-rejections, unknown actions, or actions hidden from that surface. If you
-need a record of rejected attempts, add it at your app's transport layer.
+Mutating actions are audited by default. Read-only actions may opt in with
+`audit: true`, while any action may opt out with `audit: false`. Auditing can
+also be disabled globally with `agentic.audit.enabled`.
+
+Audit begins after an action resolves. Transport rejections, unknown actions,
+and actions hidden from a surface must be recorded at the transport layer.
 
 **Failure semantics:** the audit write happens _after_ the handler runs,
 and is synchronous and exception-propagating. If the audit write itself
@@ -346,11 +321,9 @@ cover the `error` column, which stores the exception message as thrown.
 
 ## Per-surface authorization
 
-An action may gate a surface on its own terms by defining
-`authorize{Surface}()` — `authorizeMcp`, `authorizeAiTool`, `authorizeHttp`,
-`authorizeCli`, `authorizeJob` — alongside or instead of `authorize()`. The
-shape is Laravel's notification channels: `surfaces:` declares where the action
-is reachable the way `via()` does, and each method owns one channel.
+Laravel Agentic supports a separate authorization method for each surface:
+`authorizeMcp()`, `authorizeAiTool()`, `authorizeHttp()`, `authorizeCli()`,
+and `authorizeJob()`.
 
 ```php
 #[AgentAction(name: 'refund-invoice', surfaces: [Surface::Mcp, Surface::Cli])]
@@ -368,27 +341,16 @@ class RefundInvoice
 }
 ```
 
-Three rules:
+The surface-specific method replaces `authorize()` for that surface. When no
+surface-specific method exists, Laravel Agentic uses `authorize()` if present;
+otherwise the surface is ungated. All authorization methods receive the same
+input, context, and container-injected dependencies.
 
-- **The surface's own method wins.** It _replaces_ `authorize()` for that
-  surface rather than running on top of it, so a surface gate can widen access,
-  not only narrow it. That is the point — `authorizeCli(): true` above drops the
-  gate for CLI while MCP still runs the policy.
-- **A surface no method names is ungated**, exactly like an action with no
-  `authorize()` at all (see "`authorize()` is the standing gate, not exposure"
-  above). An action defining only `authorizeMcp()` is open on every other
-  surface in its `surfaces:` list — and `surfaces:` defaults to all five. Narrow
-  `surfaces:`, or add a generic `authorize()`, whenever that isn't what you
-  want. `agentic:list`'s **Gate** column names the holes: `all` or `none` when
-  the exposed surfaces agree, otherwise `open: cli` for a surface no method
-  gates and `broken: cli` for a gate that isn't public, which throws on every
-  call. Gates for surfaces outside `surfaces:` are ignored — they can't run.
-  A `?` means the handler class couldn't be loaded to answer at all, which a
-  stale `agentic:cache` manifest can cause; rebuild it with `agentic:cache`.
-- **Surface methods receive the same bindings** as `authorize()` —
-  `ActionContext` and the input DTO by type, in any order, with method-injection
-  DI for the rest. Inherited and trait-provided methods count, and because PHP
-  method lookup is case-insensitive, `authorizeMCP()` gates MCP too.
+`agentic:list` reports the effective gate for each action. Its **Gate** column
+shows `all` or `none` when exposed surfaces agree, `open: cli` for an ungated
+surface, and `broken: cli` for a gate that cannot be called. Gates outside an
+action's `surfaces:` list are ignored. A `?` means the handler could not be
+loaded, which may indicate a stale manifest; rebuild it with `agentic:cache`.
 
 `$ctx->caller()` is stamped by the adapter that verified identity, never by the
 payload, so no MCP or HTTP caller can present itself as CLI. But note what a CLI
@@ -529,18 +491,11 @@ you. Items that can't be shaped into that type fall through to the action's
 `outputMismatch` policy (a raw paginator is passed through under `Warn`,
 throws under `Strict`).
 
-The result is normalized into spatie/laravel-data's own pagination
-envelope, the same `{data, links, meta}` shape `PaginatedDataCollection`
-already produces, with the paginator's path pinned to `/` so link URLs
-(`first_page_url`, `next_page_url`, ...) are deterministic across every
-surface (MCP, ai-tool, HTTP, CLI, job) instead of reflecting whichever
-surface happened to run. Simple (`simplePaginate()`) and cursor
-pagination are both supported the same way.
+Pagination results use spatie/laravel-data's `{data, links, meta}` envelope on
+every surface. Standard, simple, and cursor pagination are supported.
 
-Those link URLs are **indicative**, not endpoints to dereference: they are
-pinned to `/` and carry only `page` (not `perPage` or your filters). Paginate
-by re-calling the action with structured `page`/`perPage` arguments (the one
-input every surface accepts) rather than following the URLs.
+Pagination links are indicative rather than callable endpoints. Request another
+page by calling the action again with `page` and `perPage`.
 
 ### Scaffolding a new action
 
