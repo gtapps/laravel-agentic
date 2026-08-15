@@ -8,47 +8,37 @@
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome" />
 </p>
 
-**An agent-native action layer for Laravel. Define an action once; expose it
-to humans and agents everywhere.**
+**An agent-native action layer for Laravel. Write an action once, then use it across HTTP, Artisan, queued jobs, Laravel AI, and MCP.**
 
-Ship your agentic Laravel app faster: authorization, human approval, and an
-audit trail come built in, and behave the same on every surface.
+Ship your agentic Laravel app **FASTER**: built-in support for authorization, human approval, and audit trails—enabled where you need them.
 
 ```
 WITHOUT: raw laravel/mcp + laravel/ai
 ─────────────────────────────────────
-dev writes "refund invoice"  ─┬─> MCP Tool class
-        (× 4, by hand)        ├─> laravel/ai tool class
-                              ├─> Controller+FormRequest
-                              └─> Artisan command
+dev writes "refund invoice"  ─┬─> MCP Tool ──> MCP clients + Laravel AI
+        (× 4, by hand)        ├─> Controller + FormRequest
+                              ├─> Artisan command
+                              └─> Queued Job
 
-agent refunds over MCP ──> tool executes IMMEDIATELY ──> no knock, no row
-                                                         "who approved that on Tuesday?" is answerable
-                                                         only from whatever you logged by hand
+each implementation owns its validation, authorization,
+error handling, tests, and any approval or audit behavior
 
 WITH laravel-agentic
 ────────────────────
 dev writes ONE action class + input DTO      (schema, authorize(), needsApproval, defined once)
                         │
-  MCP · ai-tool · HTTP · CLI · job  ────>  one Runner pipeline (nothing per-surface to drift)
+  MCP · Laravel AI · HTTP · CLI · job  ────>  one Runner pipeline (nothing per-surface to drift)
                         │
-agent decides to refund ──> validate ──> policy check ──> KNOCK: human approves
+agent decides to refund ──> validate ──> policy check ──> opt-in KNOCK for human approval
                         ──> grant consumed (single-use, this exact args hash, expires if ignored)
-                        ──> execute ──> audit row: who called, via which surface, who approved
+                        ──> execute ──> opt-in audit with who called, via which surface, who approved
 ```
 
 Three things you get once, for every surface at once:
 
-- **One definition, the surfaces you choose.** Schema compiled once and served
-  to MCP, ai-tool, HTTP, CLI, and queue: same validation, same `authorize()`,
-  same gate, no per-surface copy to drift.
-- **Consent that outlives the run.** A grant is durable, single-use, bound to
-  the principal _and_ the exact arguments, expires to deny, and is answered
-  out of band (artisan, Slack, your own endpoint) by someone who isn't the
-  caller. On the ai-tool surface it rides laravel/ai's own approval pause
-  rather than replacing it; the other four surfaces have no such hook to ride.
-- **One row per attempt.** Success, failure, denial, or knock: action,
-  surface, principal, args hash, who approved.
+- **One definition, your chosen surfaces.** Share validation and execution across HTTP, Artisan, jobs, Laravel AI, and MCP, with authorization customizable per surface.
+- **Approval when needed.** Durable, single-use, bound to the caller and exact arguments, and integrated with Laravel AI’s native approval flow.
+- **Audit when needed.** Record successes, failures, denials, and approval requests for selected actions.
 
 ## Installation
 
@@ -97,6 +87,7 @@ use Gtapps\LaravelAgentic\Enums\Surface;
 )]
 class RefundInvoice
 {
+    // Shared by default; define authorizeMcp(), authorizeHttp(), etc. to replace it for one surface.
     public function authorize(ActionContext $ctx, RefundInvoiceInput $input): bool
     {
         return $ctx->user()->can('refund', Invoice::find($input->invoiceId));
