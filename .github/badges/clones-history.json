@@ -192,8 +192,13 @@
       "timestamp": "2026-08-14T00:00:00Z",
       "count": 6,
       "uniques": 3
+    },
+    {
+      "timestamp": "2026-08-15T00:00:00Z",
+      "count": 21,
+      "uniques": 13
     }
   ],
-  "total": 732,
-  "total_uniques": 255
+  "total": 753,
+  "total_uniques": 268
 }
