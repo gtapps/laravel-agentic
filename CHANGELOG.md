@@ -3,6 +3,17 @@
 All notable changes to `gtapps/laravel-agentic` are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- **`laravel/mcp` bumped to `^1.0`** (was `~0.9.0`) — no source changes needed; the MCP server now serves protocol 2026-07-28 alongside legacy `initialize` clients.
+- **`laravel/ai` bumped to `~0.11.0`** (was `~0.10.0`) — no source changes needed.
+
+### Fixed
+
+- **MCP tools now advertise a human title** — `tools/list` reports a `title` derived from the action name (`Str::headline()`, e.g. `refund-invoice` → `Refund Invoice`) instead of the generic "Action Tool".
+
 ## [0.1.0] - 2026-07-30
 
 ### Added

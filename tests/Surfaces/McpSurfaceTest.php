@@ -10,6 +10,9 @@ use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\StrictOutputAction;
 use Illuminate\Auth\GenericUser;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Gate;
+use Laravel\Mcp\Enums\MetaKey;
+use Laravel\Mcp\Enums\ProtocolVersion;
+use Laravel\Mcp\Enums\RequestHeader;
 use Laravel\Mcp\Facades\Mcp;
 use Workbench\App\Actions\CompactRefundInput;
 
@@ -49,6 +52,7 @@ it('lists actions over a real MCP handshake with compiled-schema fidelity', func
     $refund = $tools->firstWhere('name', 'refund-invoice');
 
     expect($refund)->not->toBeNull()
+        ->and($refund['title'])->toBe('Refund Invoice')
         ->and($refund['description'])->toBe('Refund an invoice to the original payment method.')
         ->and($refund['inputSchema'])->toBe(app(SchemaCompiler::class)->compile(CompactRefundInput::class));
 });
@@ -118,6 +122,33 @@ it('round-trips the approval flow over MCP: in-band knock, approve, identical re
 
     expect(ActionLog::where('action', 'refund-invoice')->where('surface', 'mcp')->where('status', 'ok')->count())->toBe(1)
         ->and(Approval::where('status', 'consumed')->count())->toBe(1);
+});
+
+it('round-trips the approval knock over the MCP 2026-07-28 protocol shape', function () {
+    $this->actingAs(new GenericUser(['id' => 1]));
+
+    $response = $this->postJson('/mcp', [
+        'jsonrpc' => '2.0',
+        'id' => 1,
+        'method' => 'tools/call',
+        'params' => [
+            'name' => 'refund-invoice',
+            'arguments' => ['invoiceId' => 42, 'amount' => 99.5],
+            '_meta' => [
+                MetaKey::PROTOCOL_VERSION->value => ProtocolVersion::V2026_07_28->value,
+                MetaKey::CLIENT_CAPABILITIES->value => (object) [],
+            ],
+        ],
+    ], [
+        RequestHeader::PROTOCOL_VERSION->value => ProtocolVersion::V2026_07_28->value,
+        RequestHeader::METHOD->value => 'tools/call',
+        RequestHeader::NAME->value => 'refund-invoice',
+    ]);
+
+    $response->assertOk();
+
+    expect($response->json('result.isError'))->toBeTrue()
+        ->and($response->json('result.content.0.text'))->toContain("Approval required for action 'refund-invoice'");
 });
 
 it('maps validation failures to in-band field errors', function () {
