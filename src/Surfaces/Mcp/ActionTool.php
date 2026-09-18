@@ -9,6 +9,7 @@ use Gtapps\LaravelAgentic\Exceptions\ActionDenied;
 use Gtapps\LaravelAgentic\Exceptions\ActionNotFound;
 use Gtapps\LaravelAgentic\Kernel\ActionDefinition;
 use Gtapps\LaravelAgentic\Kernel\ContextFactory;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
@@ -25,6 +26,7 @@ class ActionTool extends Tool
     {
         $this->name = $definition->name;
         $this->description = $definition->description;
+        $this->title = Str::headline($definition->name);
     }
 
     /**
