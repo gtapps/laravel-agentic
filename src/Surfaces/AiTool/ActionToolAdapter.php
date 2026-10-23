@@ -131,10 +131,10 @@ class ActionToolAdapter implements Approvable, Tool
         try {
             $this->preparer->prepare($call);
         } catch (ActionDenied|ActionRefused|ValidationException) {
-            // Denials, refusals and invalid arguments are the pipeline's to report, in
-            // band, when the call actually runs — not reasons to pause.
-            // Anything else is a real fault and must not be mistaken for
-            // "no approval needed".
+            // Denials, refusals and invalid arguments are the pipeline's to
+            // report, in band, when the call actually runs — not reasons to
+            // pause. Anything else is a real fault and must not be mistaken
+            // for "no approval needed".
             return null;
         }
 

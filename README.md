@@ -429,13 +429,13 @@ The class is not final, so apps can extend it for their own refusals. The
 status must be a 4xx; anything else throws `InvalidArgumentException`. Each
 surface renders it the same way, whatever `app.debug` is:
 
-| Surface | Returns                                                                                      |
-| ------- | -------------------------------------------------------------------------------------------- |
-| MCP     | `Response::error($message)`: text only, no `structuredContent`                               |
-| ai-tool | the message string, as for a denial                                                          |
+| Surface | Returns                                                                                       |
+| ------- | --------------------------------------------------------------------------------------------- |
+| MCP     | `Response::error($message)`: text only, no `structuredContent`                                |
+| ai-tool | the message string, as for a denial                                                           |
 | HTTP    | JSON `{...context, status: 'refused', error: errorCode, message}` with the exception's status |
-| CLI     | the message as an error line and a failing exit code                                         |
-| Job     | propagates like any exception; retry policy stays with the queue (see Denied jobs)             |
+| CLI     | the message as an error line and a failing exit code                                          |
+| Job     | propagates like any exception; retry policy stays with the queue (see Denied jobs)            |
 
 In the HTTP body the fixed keys (`status`, `error`, `message`) come after the
 context, so a context key with one of those names never overrides them.
