@@ -6,6 +6,7 @@ use Gtapps\LaravelAgentic\Approvals\ApprovalRequiredException;
 use Gtapps\LaravelAgentic\Audit\Recorder;
 use Gtapps\LaravelAgentic\Contracts\ActionContext;
 use Gtapps\LaravelAgentic\Exceptions\ActionDenied;
+use Gtapps\LaravelAgentic\Exceptions\ActionRefused;
 use Gtapps\LaravelAgentic\Kernel\Steps\ApprovalGate;
 use Gtapps\LaravelAgentic\Kernel\Steps\Execute;
 use Gtapps\LaravelAgentic\Kernel\Steps\NormalizeResult;
@@ -61,6 +62,7 @@ class Runner
             $status = match (true) {
                 $e instanceof ApprovalRequiredException => 'approval_required',
                 $e instanceof ActionDenied => 'denied',
+                $e instanceof ActionRefused => 'refused',
                 default => 'error',
             };
 

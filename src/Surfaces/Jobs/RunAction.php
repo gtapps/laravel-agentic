@@ -5,6 +5,7 @@ namespace Gtapps\LaravelAgentic\Surfaces\Jobs;
 use Gtapps\LaravelAgentic\AgenticManager;
 use Gtapps\LaravelAgentic\Approvals\ApprovalRequiredException;
 use Gtapps\LaravelAgentic\Enums\Surface;
+use Gtapps\LaravelAgentic\Exceptions\ActionRefused;
 use Gtapps\LaravelAgentic\Exceptions\RequestedUserNotFound;
 use Gtapps\LaravelAgentic\Kernel\ContextFactory;
 use Illuminate\Bus\Queueable;
@@ -43,6 +44,15 @@ class RunAction implements ShouldQueue
             // Fail WITHOUT retry: the audit row and ApprovalRequested
             // event already fired; re-dispatching after the grant is the
             // caller's move.
+            if ($this->job !== null) {
+                $this->fail($e);
+
+                return;
+            }
+
+            throw $e;
+        } catch (ActionRefused $e) {
+            // Fail WITHOUT retry: a refusal cannot succeed on retry.
             if ($this->job !== null) {
                 $this->fail($e);
 

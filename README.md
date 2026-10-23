@@ -405,6 +405,44 @@ decision Laravel already owns — add
 `Illuminate\Queue\Middleware\FailOnException` to the job's middleware rather
 than expecting the package to decide retry policy for you.
 
+### Refusals that say why
+
+When a handler can't do what was asked for a domain reason (a version
+conflict, an over-limit payload), throw
+`Gtapps\LaravelAgentic\Exceptions\ActionRefused` instead of a generic
+exception, which production MCP would hide behind "An internal server error
+occurred.":
+
+```php
+use Gtapps\LaravelAgentic\Exceptions\ActionRefused;
+
+throw new ActionRefused(
+    'Version conflict: retry with baseVersion 2.',
+    errorCode: 'conflict',      // default 'refused'
+    status: 409,                // default 409
+    context: ['currentVersion' => 2],
+);
+```
+
+The class is not final, so apps can extend it for their own refusals. Each
+surface renders it the same way, whatever `app.debug` is:
+
+| Surface | Returns                                                                                      |
+| ------- | -------------------------------------------------------------------------------------------- |
+| MCP     | `Response::error($message)`: text only, no `structuredContent`                               |
+| ai-tool | the message string, as for a denial                                                          |
+| HTTP    | JSON `{...context, status: 'refused', error: errorCode, message}` with the exception's status |
+| CLI     | the message as an error line and a failing exit code                                         |
+| Job     | queued: the job fails without retry; run synchronously: the exception is rethrown            |
+
+In the HTTP body the fixed keys (`status`, `error`, `message`) come after the
+context, so a context key with one of those names never overrides them.
+
+The audit row records status `refused` with the message as its reason. As with
+denial messages, the message reaches the caller verbatim and lands
+**unredacted** in the audit `error` column, so write it for a model and keep
+secrets out of it.
+
 ## Schemas
 
 Input DTOs are spatie/laravel-data classes compiled once to JSON Schema

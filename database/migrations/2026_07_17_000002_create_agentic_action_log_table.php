@@ -20,7 +20,7 @@ return new class extends Migration
             $table->string('user_id')->nullable();
             $table->json('args'); // redacted
             $table->string('args_hash', 64);
-            $table->string('status'); // ok|error|denied|approval_required
+            $table->string('status'); // ok|error|denied|refused|approval_required
             $table->text('error')->nullable();
             $table->foreignUlid('approval_id')->nullable();
             $table->string('definition_hash', 64);

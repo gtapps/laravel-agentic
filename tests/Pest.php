@@ -18,6 +18,7 @@ use Workbench\App\Models\User;
 // default below rather than overridden per-file.
 uses(HttpEnabledTestCase::class)->in(
     __DIR__.'/ParityTest.php',
+    __DIR__.'/RefusalParityTest.php',
     __DIR__.'/Surfaces/HttpSurfaceTest.php',
 );
 

@@ -7,6 +7,7 @@ use Gtapps\LaravelAgentic\Approvals\ApprovalRequiredException;
 use Gtapps\LaravelAgentic\Enums\Surface;
 use Gtapps\LaravelAgentic\Exceptions\ActionDenied;
 use Gtapps\LaravelAgentic\Exceptions\ActionNotFound;
+use Gtapps\LaravelAgentic\Exceptions\ActionRefused;
 use Gtapps\LaravelAgentic\Kernel\ContextFactory;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Auth\Factory as AuthFactory;
@@ -55,6 +56,10 @@ class ActionCommand extends Command
 
             return self::FAILURE;
         } catch (ActionNotFound|ActionDenied $e) {
+            $this->error($e->getMessage());
+
+            return self::FAILURE;
+        } catch (ActionRefused $e) {
             $this->error($e->getMessage());
 
             return self::FAILURE;

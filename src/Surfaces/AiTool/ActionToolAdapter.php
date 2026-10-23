@@ -13,6 +13,7 @@ use Gtapps\LaravelAgentic\Audit\Redactor;
 use Gtapps\LaravelAgentic\Contracts\ActionContext;
 use Gtapps\LaravelAgentic\Enums\Surface;
 use Gtapps\LaravelAgentic\Exceptions\ActionDenied;
+use Gtapps\LaravelAgentic\Exceptions\ActionRefused;
 use Gtapps\LaravelAgentic\Kernel\ActionCall;
 use Gtapps\LaravelAgentic\Kernel\ActionDefinition;
 use Gtapps\LaravelAgentic\Kernel\ActionPreparer;
@@ -185,6 +186,8 @@ class ActionToolAdapter implements Approvable, Tool
         try {
             $result = $this->agentic->run($this->definition->name, $request->toArray(), $context);
         } catch (ApprovalRequiredException|ActionDenied $e) {
+            return $e->getMessage();
+        } catch (ActionRefused $e) {
             return $e->getMessage();
         } catch (ValidationException $e) {
             return 'Invalid arguments: '.json_encode($e->errors());
