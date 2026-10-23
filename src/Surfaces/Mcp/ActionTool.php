@@ -7,6 +7,7 @@ use Gtapps\LaravelAgentic\Approvals\ApprovalRequiredException;
 use Gtapps\LaravelAgentic\Enums\Surface;
 use Gtapps\LaravelAgentic\Exceptions\ActionDenied;
 use Gtapps\LaravelAgentic\Exceptions\ActionNotFound;
+use Gtapps\LaravelAgentic\Exceptions\ActionRefused;
 use Gtapps\LaravelAgentic\Kernel\ActionDefinition;
 use Gtapps\LaravelAgentic\Kernel\ContextFactory;
 use Illuminate\Support\Str;
@@ -55,7 +56,7 @@ class ActionTool extends Tool
 
         try {
             $result = $agentic->run($this->definition->name, $request->all(), $context);
-        } catch (ApprovalRequiredException|ActionDenied|ActionNotFound $e) {
+        } catch (ApprovalRequiredException|ActionDenied|ActionNotFound|ActionRefused $e) {
             return Response::error($e->getMessage());
         } catch (ValidationException $e) {
             return Response::error('Invalid arguments: '.json_encode($e->errors()));

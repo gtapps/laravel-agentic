@@ -399,11 +399,54 @@ identical results from one definition.
 
 ### Denied jobs
 
-A denial thrown inside a queued action propagates, so the worker retries it per
-the job's policy. If a denial should be terminal for your app, that's a queue
-decision Laravel already owns — add
+A denial or a refusal (`ActionRefused`, below) thrown inside a queued action
+propagates, so the worker retries it per the job's policy. If either should be
+terminal for your app, that's a queue decision Laravel already owns: add
 `Illuminate\Queue\Middleware\FailOnException` to the job's middleware rather
 than expecting the package to decide retry policy for you.
+
+### Refusals that say why
+
+When a handler can't do what was asked for a domain reason (a version
+conflict, an over-limit payload), throw
+`Gtapps\LaravelAgentic\Exceptions\ActionRefused` instead of a generic
+exception, which production MCP would hide behind "An internal server error
+occurred.":
+
+```php
+use Gtapps\LaravelAgentic\Exceptions\ActionRefused;
+
+throw new ActionRefused(
+    'Version conflict: retry with baseVersion 2.',
+    errorCode: 'conflict',      // default 'refused'
+    status: 409,                // default 409
+    context: ['currentVersion' => 2],
+    auditReason: null,          // default: the message
+);
+```
+
+The class is not final, so apps can extend it for their own refusals. A
+subclass with its own constructor must call `parent::__construct()`, which sets
+everything the surfaces and the audit read. The status must be a 4xx; anything
+else throws `InvalidArgumentException`. Each surface renders it the same way,
+whatever `app.debug` is:
+
+| Surface | Returns                                                                                       |
+| ------- | --------------------------------------------------------------------------------------------- |
+| MCP     | `Response::error($message)`: text only, no `structuredContent`                                |
+| ai-tool | the message string, as for a denial                                                           |
+| HTTP    | JSON `{...context, status: 'refused', error: errorCode, message}` with the exception's status |
+| CLI     | the message as an error line and a failing exit code                                          |
+| Job     | propagates like any exception; retry policy stays with the queue (see Denied jobs)            |
+
+In the HTTP body the fixed keys (`status`, `error`, `message`) come after the
+context, so a context key with one of those names never overrides them.
+
+The audit row records status `refused` with the audit reason, which is the
+message unless you pass `auditReason`. As with denial messages, that reason
+lands **unredacted** in the audit `error` column. Write the message for a model
+and keep secrets out of it; when it must carry something the audit trail should
+not keep (the content of a newer version, say), pass a shorter `auditReason`.
 
 ## Schemas
 

@@ -21,11 +21,9 @@ beforeEach(function () {
 });
 
 it('knocks from a queued job, records approval_required, and fails without retry', function () {
-    try {
-        RunAction::dispatchSync('refund-invoice', ['invoiceId' => 42, 'amount' => 99.5], 1);
-    } catch (Throwable) {
-        // Sync driver surfaces the failure; a real queue marks the job failed.
-    }
+    // dispatchSync attaches a SyncJob, so the knock fails the job and nothing
+    // is thrown; a rethrow here would mean the queue could retry the knock.
+    RunAction::dispatchSync('refund-invoice', ['invoiceId' => 42, 'amount' => 99.5], 1);
 
     expect(Approval::where('status', 'pending')->count())->toBe(1)
         ->and(ActionLog::where('surface', 'job')->where('status', 'approval_required')->count())->toBe(1);

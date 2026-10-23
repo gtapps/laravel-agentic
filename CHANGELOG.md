@@ -3,6 +3,17 @@
 All notable changes to `gtapps/laravel-agentic` are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **`ActionRefused` for domain refusals** - throw `Gtapps\LaravelAgentic\Exceptions\ActionRefused($message, $errorCode = 'refused', $status = 409, $context = [], $auditReason = null)` when an action refuses a request for a domain reason (a version conflict, an over-limit payload). The message reaches the caller verbatim on every surface, whatever `app.debug` is: MCP returns it as a text-only tool error, the ai-tool returns it as text, HTTP answers `{...context, status: 'refused', error, message}` with the exception's status (fixed keys win over context), the CLI prints it and exits non-zero, and a queued job lets it propagate so retry policy stays with the queue (add `FailOnException` to make it terminal). The status must be a 4xx. The class is not final; a subclass that defines its own constructor must call `parent::__construct()`, which sets everything the surfaces and the audit read. Previously production MCP reduced it to "An internal server error occurred."
+- **audit status `refused`** - a refusal is recorded as `refused` instead of `error`, with its `auditReason` (the message unless given) as the reason. Like denial reasons, it lands **unredacted** in the audit `error` column.
+
+### Upgrading
+
+No config or migration changes required.
+
 ## [0.1.1] - 2026-09-18
 
 ### Changed

@@ -13,6 +13,7 @@ use Gtapps\LaravelAgentic\Audit\Redactor;
 use Gtapps\LaravelAgentic\Contracts\ActionContext;
 use Gtapps\LaravelAgentic\Enums\Surface;
 use Gtapps\LaravelAgentic\Exceptions\ActionDenied;
+use Gtapps\LaravelAgentic\Exceptions\ActionRefused;
 use Gtapps\LaravelAgentic\Kernel\ActionCall;
 use Gtapps\LaravelAgentic\Kernel\ActionDefinition;
 use Gtapps\LaravelAgentic\Kernel\ActionPreparer;
@@ -129,11 +130,11 @@ class ActionToolAdapter implements Approvable, Tool
 
         try {
             $this->preparer->prepare($call);
-        } catch (ActionDenied|ValidationException) {
-            // Denials and invalid arguments are the pipeline's to report, in
-            // band, when the call actually runs — not reasons to pause.
-            // Anything else is a real fault and must not be mistaken for
-            // "no approval needed".
+        } catch (ActionDenied|ActionRefused|ValidationException) {
+            // Denials, refusals and invalid arguments are the pipeline's to
+            // report, in band, when the call actually runs, not reasons to
+            // pause. Anything else is a real fault and must not be mistaken
+            // for "no approval needed".
             return null;
         }
 
@@ -184,7 +185,7 @@ class ActionToolAdapter implements Approvable, Tool
 
         try {
             $result = $this->agentic->run($this->definition->name, $request->toArray(), $context);
-        } catch (ApprovalRequiredException|ActionDenied $e) {
+        } catch (ApprovalRequiredException|ActionDenied|ActionRefused $e) {
             return $e->getMessage();
         } catch (ValidationException $e) {
             return 'Invalid arguments: '.json_encode($e->errors());

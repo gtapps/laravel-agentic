@@ -150,7 +150,7 @@ event (the package ships no HTTP grant endpoint by design).
 `Redactor` applies
 `agentic.redact` dot-path globs to the **arguments** in both audit rows and
 approval payloads (the list is empty by default; the `error` column is stored
-as thrown). `ActionLog` and `Approval` each resolve
+as thrown, except an `ActionDenied` or `ActionRefused` audit reason). `ActionLog` and `Approval` each resolve
 their own connection via `agentic.audit.connection` / `agentic.approvals.connection`
 (`getConnectionName()`; both default `null` = the app's default connection),
 and the migrations honor the same keys.
