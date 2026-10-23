@@ -401,7 +401,7 @@ identical results from one definition.
 
 A denial or a refusal (`ActionRefused`, below) thrown inside a queued action
 propagates, so the worker retries it per the job's policy. If either should be
-terminal for your app, that's a queue decision Laravel already owns — add
+terminal for your app, that's a queue decision Laravel already owns: add
 `Illuminate\Queue\Middleware\FailOnException` to the job's middleware rather
 than expecting the package to decide retry policy for you.
 
