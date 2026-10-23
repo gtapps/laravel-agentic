@@ -69,7 +69,13 @@ class Runner
             // A concealed denial tells the caller nothing; the trail still gets
             // the policy's real reason. A refusal may keep caller-only content
             // out of the trail the same way.
-            $reason = $e instanceof ActionDenied || $e instanceof ActionRefused ? $e->auditReason : $e->getMessage();
+            // A refusal subclass that skipped the parent constructor never set
+            // its audit reason, so fall back to the message rather than fail.
+            $reason = match (true) {
+                $e instanceof ActionDenied => $e->auditReason,
+                $e instanceof ActionRefused => $e->auditReason ?? $e->getMessage(),
+                default => $e->getMessage(),
+            };
 
             $this->recorder->recordSafely($call, $status, $reason);
 
