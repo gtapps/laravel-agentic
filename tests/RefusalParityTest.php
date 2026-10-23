@@ -9,6 +9,7 @@ use Gtapps\LaravelAgentic\Surfaces\Mcp\AgenticServer;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\AuditReasonRefusingAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\RefusingAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\ReservedContextRefusingAction;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\SubclassRefusingAction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Laravel\Ai\Tools\Request;
@@ -24,7 +25,7 @@ uses(RefreshDatabase::class);
 beforeEach(function () {
     config(['agentic.http.middleware' => []]);
 
-    Agentic::register([RefusingAction::class, ReservedContextRefusingAction::class, AuditReasonRefusingAction::class]);
+    Agentic::register([RefusingAction::class, ReservedContextRefusingAction::class, AuditReasonRefusingAction::class, SubclassRefusingAction::class]);
 
     useUsersTable();
 
@@ -105,6 +106,22 @@ it('audits the audit reason, not the caller message, when one is given', functio
     expect(ActionLog::where('action', 'audit-reason-refusing')->sole())
         ->status->toBe('refused')
         ->error->toBe('Version conflict.');
+});
+
+it('renders an app subclass that calls the parent constructor', function () {
+    $this->actingAs($this->user)
+        ->postJson('/agentic/actions/subclass-refusing', REFUSAL_ARGS)
+        ->assertStatus(409)
+        ->assertExactJson([
+            'currentVersion' => 3,
+            'status' => 'refused',
+            'error' => 'conflict',
+            'message' => 'Stale: the current version is 3.',
+        ]);
+
+    expect(ActionLog::where('action', 'subclass-refusing')->sole())
+        ->status->toBe('refused')
+        ->error->toBe('Stale version.');
 });
 
 it('refuses a status outside 4xx', function (int $status) {
