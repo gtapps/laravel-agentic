@@ -10,11 +10,11 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\Schema;
 use Workbench\App\Models\User;
 
-// ParityTest and HttpSurfaceTest exercise the HTTP surface, which is
+// ParityTest, RefusalParityTest and HttpSurfaceTest exercise the HTTP surface, which is
 // disabled at provider boot by default — too early for beforeEach() config.
 // They get HttpEnabledTestCase (enables it in getEnvironmentSetUp, before
 // boot); everything else uses the base TestCase. Pest allows only one real
-// TestCase class per file, so these two are excluded from the directory-wide
+// TestCase class per file, so these three are excluded from the directory-wide
 // default below rather than overridden per-file.
 uses(HttpEnabledTestCase::class)->in(
     __DIR__.'/ParityTest.php',

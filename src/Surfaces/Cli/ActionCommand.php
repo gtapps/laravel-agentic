@@ -55,11 +55,7 @@ class ActionCommand extends Command
             $this->line("Approve with: php artisan agentic:approve {$e->approvalId}");
 
             return self::FAILURE;
-        } catch (ActionNotFound|ActionDenied $e) {
-            $this->error($e->getMessage());
-
-            return self::FAILURE;
-        } catch (ActionRefused $e) {
+        } catch (ActionNotFound|ActionDenied|ActionRefused $e) {
             $this->error($e->getMessage());
 
             return self::FAILURE;

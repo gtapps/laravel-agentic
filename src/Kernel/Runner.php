@@ -67,8 +67,9 @@ class Runner
             };
 
             // A concealed denial tells the caller nothing; the trail still gets
-            // the policy's real reason.
-            $reason = $e instanceof ActionDenied ? $e->auditReason : $e->getMessage();
+            // the policy's real reason. A refusal may keep caller-only content
+            // out of the trail the same way.
+            $reason = $e instanceof ActionDenied || $e instanceof ActionRefused ? $e->auditReason : $e->getMessage();
 
             $this->recorder->recordSafely($call, $status, $reason);
 

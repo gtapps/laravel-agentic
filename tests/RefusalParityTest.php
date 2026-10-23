@@ -6,6 +6,7 @@ use Gtapps\LaravelAgentic\Exceptions\ActionRefused;
 use Gtapps\LaravelAgentic\Facades\Agentic;
 use Gtapps\LaravelAgentic\Surfaces\Jobs\RunAction;
 use Gtapps\LaravelAgentic\Surfaces\Mcp\AgenticServer;
+use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\AuditReasonRefusingAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\RefusingAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\ReservedContextRefusingAction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -23,7 +24,7 @@ uses(RefreshDatabase::class);
 beforeEach(function () {
     config(['agentic.http.middleware' => []]);
 
-    Agentic::register([RefusingAction::class, ReservedContextRefusingAction::class]);
+    Agentic::register([RefusingAction::class, ReservedContextRefusingAction::class, AuditReasonRefusingAction::class]);
 
     useUsersTable();
 
@@ -73,8 +74,8 @@ it('renders a refusal identically through MCP, ai-tool, HTTP, CLI, and job', fun
     expect($exitCode)->not->toBe(0)
         ->and(Artisan::output())->toContain(REFUSAL_MESSAGE);
 
-    // ── Job (run with no queue job attached, the refusal is rethrown) ──
-    expect(fn () => app()->call([new RunAction('refusing', REFUSAL_ARGS, 1), 'handle']))
+    // ── Job (propagates; retry policy stays with the queue) ────────────
+    expect(fn () => RunAction::dispatchSync('refusing', REFUSAL_ARGS, 1))
         ->toThrow(ActionRefused::class, REFUSAL_MESSAGE);
 
     // ── Audit ──────────────────────────────────────────────────────────
@@ -86,6 +87,29 @@ it('renders a refusal identically through MCP, ai-tool, HTTP, CLI, and job', fun
         ->and($rows->pluck('surface')->sort()->values()->all())
         ->toBe(collect(Surface::values(Surface::cases()))->sort()->values()->all());
 });
+
+it('leaves a queued refusal to the queue retry policy', function () {
+    $job = (new RunAction('refusing', REFUSAL_ARGS, 1))->withFakeQueueInteractions();
+
+    expect(fn () => app()->call([$job, 'handle']))->toThrow(ActionRefused::class, REFUSAL_MESSAGE);
+
+    $job->assertNotFailed();
+});
+
+it('audits the audit reason, not the caller message, when one is given', function () {
+    $this->actingAs($this->user)
+        ->postJson('/agentic/actions/audit-reason-refusing', REFUSAL_ARGS)
+        ->assertStatus(409)
+        ->assertJsonPath('message', "Version conflict. The newer version follows:\nsecret body");
+
+    expect(ActionLog::where('action', 'audit-reason-refusing')->sole())
+        ->status->toBe('refused')
+        ->error->toBe('Version conflict.');
+});
+
+it('refuses a status outside 4xx', function (int $status) {
+    expect(fn () => new ActionRefused('x', status: $status))->toThrow(InvalidArgumentException::class);
+})->with([0, 200, 399, 500, 999]);
 
 it('keeps the fixed HTTP keys when the refusal context collides with them', function () {
     $this->actingAs($this->user)

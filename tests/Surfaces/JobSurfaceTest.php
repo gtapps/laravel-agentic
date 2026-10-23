@@ -24,7 +24,8 @@ it('knocks from a queued job, records approval_required, and fails without retry
     try {
         RunAction::dispatchSync('refund-invoice', ['invoiceId' => 42, 'amount' => 99.5], 1);
     } catch (Throwable) {
-        // Sync driver surfaces the failure; a real queue marks the job failed.
+        // dispatchSync attaches a SyncJob, so the knock fails the job and nothing
+        // is thrown; the catch only guards against that changing.
     }
 
     expect(Approval::where('status', 'pending')->count())->toBe(1)

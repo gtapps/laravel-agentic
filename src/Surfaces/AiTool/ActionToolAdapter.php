@@ -130,8 +130,8 @@ class ActionToolAdapter implements Approvable, Tool
 
         try {
             $this->preparer->prepare($call);
-        } catch (ActionDenied|ValidationException) {
-            // Denials and invalid arguments are the pipeline's to report, in
+        } catch (ActionDenied|ActionRefused|ValidationException) {
+            // Denials, refusals and invalid arguments are the pipeline's to report, in
             // band, when the call actually runs — not reasons to pause.
             // Anything else is a real fault and must not be mistaken for
             // "no approval needed".
@@ -185,9 +185,7 @@ class ActionToolAdapter implements Approvable, Tool
 
         try {
             $result = $this->agentic->run($this->definition->name, $request->toArray(), $context);
-        } catch (ApprovalRequiredException|ActionDenied $e) {
-            return $e->getMessage();
-        } catch (ActionRefused $e) {
+        } catch (ApprovalRequiredException|ActionDenied|ActionRefused $e) {
             return $e->getMessage();
         } catch (ValidationException $e) {
             return 'Invalid arguments: '.json_encode($e->errors());

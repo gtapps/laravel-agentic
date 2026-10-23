@@ -56,9 +56,7 @@ class ActionTool extends Tool
 
         try {
             $result = $agentic->run($this->definition->name, $request->all(), $context);
-        } catch (ApprovalRequiredException|ActionDenied|ActionNotFound $e) {
-            return Response::error($e->getMessage());
-        } catch (ActionRefused $e) {
+        } catch (ApprovalRequiredException|ActionDenied|ActionNotFound|ActionRefused $e) {
             return Response::error($e->getMessage());
         } catch (ValidationException $e) {
             return Response::error('Invalid arguments: '.json_encode($e->errors()));
