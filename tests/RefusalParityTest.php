@@ -109,6 +109,16 @@ it('audits the audit reason, not the caller message, when one is given', functio
 });
 
 it('renders an app subclass that calls the parent constructor', function () {
+    config(['app.debug' => false]);
+
+    $mcp = $this->actingAs($this->user)->postJson('/mcp', [
+        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
+        'params' => ['name' => 'subclass-refusing', 'arguments' => REFUSAL_ARGS],
+    ]);
+
+    expect($mcp->json('result.isError'))->toBeTrue()
+        ->and($mcp->json('result.content.0.text'))->toBe('Stale: the current version is 3.');
+
     $this->actingAs($this->user)
         ->postJson('/agentic/actions/subclass-refusing', REFUSAL_ARGS)
         ->assertStatus(409)
@@ -119,9 +129,11 @@ it('renders an app subclass that calls the parent constructor', function () {
             'message' => 'Stale: the current version is 3.',
         ]);
 
-    expect(ActionLog::where('action', 'subclass-refusing')->sole())
-        ->status->toBe('refused')
-        ->error->toBe('Stale version.');
+    $rows = ActionLog::where('action', 'subclass-refusing')->get();
+
+    expect($rows)->toHaveCount(2)
+        ->and($rows->pluck('status')->unique()->all())->toBe(['refused'])
+        ->and($rows->pluck('error')->unique()->all())->toBe(['Stale version.']);
 });
 
 it('refuses a status outside 4xx', function (int $status) {
