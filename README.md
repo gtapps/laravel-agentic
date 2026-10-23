@@ -425,9 +425,11 @@ throw new ActionRefused(
 );
 ```
 
-The class is not final, so apps can extend it for their own refusals. The
-status must be a 4xx; anything else throws `InvalidArgumentException`. Each
-surface renders it the same way, whatever `app.debug` is:
+The class is not final, so apps can extend it for their own refusals. A
+subclass with its own constructor must call `parent::__construct()`, which sets
+everything the surfaces and the audit read. The status must be a 4xx; anything
+else throws `InvalidArgumentException`. Each surface renders it the same way,
+whatever `app.debug` is:
 
 | Surface | Returns                                                                                       |
 | ------- | --------------------------------------------------------------------------------------------- |

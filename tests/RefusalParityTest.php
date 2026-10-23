@@ -7,7 +7,6 @@ use Gtapps\LaravelAgentic\Facades\Agentic;
 use Gtapps\LaravelAgentic\Surfaces\Jobs\RunAction;
 use Gtapps\LaravelAgentic\Surfaces\Mcp\AgenticServer;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\AuditReasonRefusingAction;
-use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\BareRefusingAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\RefusingAction;
 use Gtapps\LaravelAgentic\Tests\Fixtures\Actions\ReservedContextRefusingAction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -25,7 +24,7 @@ uses(RefreshDatabase::class);
 beforeEach(function () {
     config(['agentic.http.middleware' => []]);
 
-    Agentic::register([RefusingAction::class, ReservedContextRefusingAction::class, AuditReasonRefusingAction::class, BareRefusingAction::class]);
+    Agentic::register([RefusingAction::class, ReservedContextRefusingAction::class, AuditReasonRefusingAction::class]);
 
     useUsersTable();
 
@@ -106,18 +105,6 @@ it('audits the audit reason, not the caller message, when one is given', functio
     expect(ActionLog::where('action', 'audit-reason-refusing')->sole())
         ->status->toBe('refused')
         ->error->toBe('Version conflict.');
-});
-
-it('audits the message when a subclass skipped the parent constructor', function () {
-    $mcp = $this->actingAs($this->user)->postJson('/mcp', [
-        'jsonrpc' => '2.0', 'id' => 1, 'method' => 'tools/call',
-        'params' => ['name' => 'bare-refusing', 'arguments' => REFUSAL_ARGS],
-    ]);
-
-    expect($mcp->json('result.content.0.text'))->toBe('Stale version.')
-        ->and(ActionLog::where('action', 'bare-refusing')->sole())
-        ->status->toBe('refused')
-        ->error->toBe('Stale version.');
 });
 
 it('refuses a status outside 4xx', function (int $status) {

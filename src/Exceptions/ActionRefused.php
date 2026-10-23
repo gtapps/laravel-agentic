@@ -10,7 +10,9 @@ use RuntimeException;
  * over-limit payload. The message is written for a model and reaches the
  * caller verbatim on every surface, whatever app.debug is. HTTP also carries
  * the error code, the status and the context; the other surfaces carry the
- * message alone. Extend it for app-specific refusals.
+ * message alone. Extend it for app-specific refusals; a subclass that defines
+ * its own constructor must call parent::__construct(), which sets every
+ * property the surfaces and the audit read.
  *
  * The audit row records the audit reason, which defaults to the message. Pass
  * a separate one when the message carries something that must not land in the
