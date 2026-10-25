@@ -7,6 +7,7 @@ use Gtapps\LaravelAgentic\Approvals\ApprovalRequiredException;
 use Gtapps\LaravelAgentic\Enums\Surface;
 use Gtapps\LaravelAgentic\Exceptions\ActionDenied;
 use Gtapps\LaravelAgentic\Exceptions\ActionNotFound;
+use Gtapps\LaravelAgentic\Exceptions\ActionRefused;
 use Gtapps\LaravelAgentic\Kernel\ContextFactory;
 use Gtapps\LaravelAgentic\Kernel\Registry;
 use Illuminate\Http\JsonResponse;
@@ -54,6 +55,14 @@ class ActionController
                 'retry' => 'identical call after approval',
                 'message' => $e->getMessage(),
             ], 409);
+        } catch (ActionRefused $e) {
+            // The fixed keys come last so the refusal's context cannot override them.
+            return new JsonResponse([
+                ...$e->context,
+                'status' => 'refused',
+                'error' => $e->errorCode,
+                'message' => $e->getMessage(),
+            ], $e->status);
         }
 
         return new JsonResponse([
