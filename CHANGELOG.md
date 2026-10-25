@@ -3,7 +3,7 @@
 All notable changes to `gtapps/laravel-agentic` are documented here.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.2.0] - 2026-10-25
 
 ### Added
 
@@ -13,6 +13,8 @@ This project adheres to [Semantic Versioning](https://semver.org/).
 ### Upgrading
 
 No config or migration changes required.
+
+**Note:** refusals previously audited as `error` now record `refused`; update any audit queries filtering on status.
 
 ## [0.1.1] - 2026-09-18
 
